@@ -1,0 +1,364 @@
+﻿<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <title>ESP 2866 DCC controller - turnout roster</title>
+    <!--2021-01-27-->
+       <style>
+        .outer {
+            border: solid;
+            border-width: 1px;
+            padding-left: 2vw;
+        }
+
+        .outerX {
+            display: flex;
+            flex-direction: column;
+            background: none;
+            height: 100%;
+        }
+
+        .trip {
+            background-color: orangered;
+        }
+
+        .on {
+            background-color: lightgreen;
+        }
+
+        .inUse {
+               background-color: lightgray;
+        }
+
+        .nominal {
+            visibility: hidden;
+        }
+
+
+           input[type=text], .address {
+               font-size: 4vmin;
+               width: 20vw;
+               padding: 0px 0px;
+               margin: 0px 0;
+               box-sizing: border-box;
+           }
+
+          
+        input[type=button] {
+            width: 20vw;
+            font-size: 4vmin;
+        }
+
+           input[type=checkbox] {
+               transform: scale(2);
+           }
+
+         
+        BODY {
+            FONT-SIZE: 4vmin;
+            FONT-FAMILY: Verdana, Arial, Helvetica, sans-serif
+        }
+
+        p {
+            font-size: 4vmin;
+        }
+
+        table {
+            font-size: 4vmin;
+        }
+    </style>
+
+    <script type="text/javascript">
+        const MAX_ROWS = 8;
+
+        //var wsUri = "wss://echo.websocket.org/";
+        var wsUri = "ws://192.168.6.1:12080/";
+
+
+        //define send-receive objects
+        var hardware = { "type": "dccUI", "cmd": "hardware", "SSID": "DCC_02", "IP": "192.168.7.1", "MAC":"return of the", "pwd": "", "wsPort": 12080, "wiPort": 12090, "action": "poll" };
+       // var roster = {"type": "dccUI", "cmd": "turnout", "turnouts": [{ "slot": 0, "address": 3, "state": "closed", "name":"siding 1"},
+        //    { "slot": 1, "address": 4, "state": "thrown", "name": "ivor"}] };
+        //long version of roster is for dev work with ws:echo
+        
+	var roster = {"type": "dccUI", "cmd": "turnout", "turnouts": []};
+
+
+
+      //****** common routine
+        var attempts = 0;
+
+        //We try twice to pull the ESP specific wsUri, if we fail
+        //then we fall back to the default wsUri defined above.
+        function boot() {
+            if (attempts > 10) { return; }
+            //var re = /echo/gm;
+            //if (re.test(wsUri)) {
+            attempts++;
+            if (attempts > 2) {
+                //connect anyway to the default wsUri
+                initWebsocket();
+            } else {
+                //try and pull the websocket addr from the server
+                httpGet("/hardware");
+                //and call self again to check we are done
+                setTimeout(function () { boot(); }, 3000);
+            }
+            //}
+
+
+        }
+
+
+        function httpGet(theUrl) {
+            if (window.XMLHttpRequest) {// code for IE7+, Firefox, Chrome, Opera, Safari
+                xmlhttp = new XMLHttpRequest();
+            }
+            else {// code for IE6, IE5
+                xmlhttp = new ActiveXObject("Microsoft.XMLHTTP");
+            }
+            xmlhttp.onreadystatechange = function () {
+                try {
+                    if (xmlhttp.readyState == 4 && xmlhttp.status == 200) {
+                        if (console) { console.log(xmlhttp.responseText) };
+
+                        var myObj = JSON.parse(xmlhttp.responseText);
+                        if (!myObj.type) return;
+                        if (myObj.type != "dccUI") return;
+                        hardware = myObj;
+                        wsUri = "ws://" + hardware.IP + ":" + hardware.wsPort
+                        if (console) console.log(wsUri);
+                        //connect to the websocket provided by the ESP server
+                        initWebsocket();
+                    }
+                }
+                catch (e) {
+                    if (console) console.log(e.message);
+                }
+            }
+            //XMLHttpRequest.open(method, url[, async[, user[, password]]])
+            xmlhttp.open("GET", theUrl, true);
+            //calling syc requests on main thread is deprecated due to response lock-ups
+            //in our case we need to know the response before we can initialise the websocket
+            xmlhttp.send();
+
+            //now call boot again after 3 sec
+
+        }
+
+
+
+        function initWebsocket() {
+            if (console) { console.log("initWebsocket") };
+            //signal to boot timeout to stop
+            attempts = 10;
+
+            websocket = new WebSocket(wsUri);
+            websocket.onopen = function (evt) {
+                onOpen(evt)
+            };
+
+            websocket.onclose = function (evt) {
+                onClose(evt)
+            };
+
+            websocket.onmessage = function (evt) {
+                onMessage(evt)
+
+            };
+
+            websocket.onerror = function (evt) {
+                onError(evt)
+            };
+
+
+
+        }
+
+        //can use open/close to set a green/red connection flag
+        function onOpen(evt) {
+            if (console) {
+                console.log("websocket open");
+            }
+            //debug send for an echo
+            pollRoster();
+        }
+
+        function onClose(evt) {
+            if (console) {
+                console.log("websocket close");
+            }
+
+        }
+
+        function onError(evt) {
+            if (console) {
+                console.log("websocket error");
+            }
+
+        }
+
+
+        function onMessage(evt) {
+            //in theory all commands and status requests receive back a full object if (console)
+            debug.innerHTML = evt.data;
+            repaintUI();
+        }
+
+        //can use this rather than body onload
+        // window.addEventListener("load", initWebsocket, false);
+
+
+
+
+        //******* common routine end
+        function pollRoster() {
+            var myJSON = JSON.stringify(roster);
+            debug.innerHTML = myJSON;
+            websocket.send(myJSON);
+        }
+
+   
+        function repaintUI() {
+            try {
+                var myObj = JSON.parse(debug.innerHTML);
+                if (!myObj.type) {
+                    return;
+                }
+
+                if (myObj.type != "dccUI") {
+                    return;
+                }
+
+
+                //read data into specific json object
+                if (myObj.cmd == "turnout") {
+                    if (console) {
+                        console.log("turnout");
+			console.log(debug.innerHTML);
+                    }
+
+                    roster = myObj;
+                    //now need to iterate and add table rows as required
+                   
+                    //wipe the table.  ergh.  easier to have a hidden dummy row then copy this out
+                    //https://stackoverflow.com/questions/18333427/how-to-insert-a-row-in-an-html-table-body-in-javascript
+                    //https://stackoverflow.com/questions/3607291/javascript-and-getelementbyid-for-multiple-elements-with-the-same-id
+                    var tbodyRef = document.getElementById('entries').getElementsByTagName('tbody')[0];
+                    //alert(tbodyRef.childNodes.length);    
+
+                    //building a table is not worth the effort because you need to update it on subsequent dumps from the server
+                    //and binding is different to building so easier to add say 20 rows in html and then collapse the ones we don't need
+
+
+                   // document.getElementById('a'+0).value =roster.locos[0].address;
+
+                    //bind table
+                    var i = 0;
+                    for (i = 0; i < roster.turnouts.length; ++i) {
+                        document.getElementById('a' + i).value = roster.turnouts[i].address;
+                        document.getElementById('n' + i).value = roster.turnouts[i].name;
+			document.getElementById('b' + i).value = roster.turnouts[i].state;
+
+                     }
+
+                    //hide remaining elements, note the number of table rows is set as a const and needs to be same or greater than
+                    //MAX_TURNOUTS in the arduino code
+                    for (i = i; i < MAX_ROWS; ++i) {
+                        var r = document.getElementById('r' + i);
+                        r.style = "visibility:collapse";
+                    }
+
+                }
+
+                
+            }
+
+            //use myarray.push("{more pairs}"); to add to a json array
+            //use delete myarray[2];
+            //https://stackoverflow.com/questions/18884840/adding-a-new-array-element-to-a-json-object
+
+            catch (e) {
+                if (console) {
+                    console.log(e.message);
+                }
+
+            }
+        }
+
+
+        function sendRoster() {
+            //send any table changes to server. only basic checks are done here.
+            //server needs to check for dupes (i.e. cannot set two slots to the same dcc address)
+            //and deal with negative or decimal point numbers as addresses
+
+            //unbind table
+             for (i = 0; i < roster.turnouts.length; ++i) {
+                
+                 a = document.getElementById('a' + i).value
+                 if (isNaN(a)) continue;
+                 if (a % 1 != 0) continue;  //integer only
+                 if (a < 0) continue;
+                 if (a > 2044) a = 2044;
+                 roster.turnouts[i].address = a;
+                 roster.turnouts[i].name= document.getElementById('n' + i).value;
+		roster.turnouts[i].state= document.getElementById('b' + i).value;
+             }
+
+            if (console) { (console.log("sendRoster")) };
+            var myJSON = JSON.stringify(roster);
+            debug.innerHTML = myJSON;
+            websocket.send(myJSON);
+        }
+
+	function doChange(t){
+	t.value=t.value=="thrown"?"closed":"thrown";
+	sendRoster();
+	}
+
+    </script>
+
+
+</head>
+
+
+<body onload="boot()">
+    <div class="outer">
+        <p><b>ESP DCC turnout roster</b></p>
+
+   
+        <table id="entries" border="0" style="width:100%">
+            <thead> <tr><td>slot</td><td>address</td><td>name</td><td>state</td></tr> </thead>
+            <tbody>
+                <tr id="r0"><td>0</td><td><input type="text" id="a0" /></td><td><input type="text" maxlength="8" id="n0" /></td><td><input id="b0" type="button" value="unknown" onclick="doChange(this)"/></td></tr>
+                <tr id="r1"><td>1</td><td><input type="text" id="a1" /></td><td><input type="text" maxlength="8" id="n1" /></td><td><input id="b1" type="button" value="unknown" onclick="doChange(this)"/></td></tr>
+                <tr id="r2"><td>2</td><td><input type="text" id="a2" /></td><td><input type="text" maxlength="8" id="n2" /></td><td><input id="b2" type="button" value="unknown" onclick="doChange(this)"/></td></tr>
+                <tr id="r3"><td>3</td><td><input type="text" id="a3" /></td><td><input type="text" maxlength="8" id="n3" /></td><td><input id="b3" type="button" value="unknown" onclick="doChange(this)"/></td></tr>
+                <tr id="r4"><td>4</td><td><input type="text" id="a4" /></td><td><input type="text" maxlength="8" id="n4" /></td><td><input id="b4" type="button" value="unknown" onclick="doChange(this)"/></td></tr>
+                <tr id="r5"><td>5</td><td><input type="text" id="a5" /></td><td><input type="text" maxlength="8" id="n5" /></td><td><input id="b5" type="button" value="unknown" onclick="doChange(this)"/></td></tr>
+                <tr id="r6"><td>6</td><td><input type="text" id="a6" /></td><td><input type="text" maxlength="8" id="n6" /></td><td><input id="b6" type="button" value="unknown" onclick="doChange(this)"/></td></tr>
+                <tr id="r7"><td>7</td><td><input type="text" id="a7" /></td><td><input type="text" maxlength="8" id="n7" /></td><td><input id="b7" type="button" value="unknown" onclick="doChange(this)"/></td></tr>
+
+
+
+
+            </tbody>
+
+
+
+        </table>
+        <br />
+        <input type="button" value="SAVE" onclick="sendRoster();" />
+        <br /> <br />
+        To delete a turnout, set its address to 0.
+
+
+        <br />
+        <br />
+        <a href="roster.htm">loco roster</a><br /><br />
+        <a href="index.htm">power settings</a><br /><br />
+         <p id="debug" style="visibility:hidden; font-size:2vmin"> </p>
+
+    </div>
+
+  
+</body>
+        </html >

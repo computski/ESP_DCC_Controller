@@ -1,0 +1,350 @@
+﻿<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <title>ESP 2866 DCC controller - hardware</title>
+
+    <!--updated 2021-01-27-->
+    <style>
+        .outer {
+            border: solid;
+            border-width: 1px;
+            padding-left: 2vw;
+        }
+
+        .outerX {
+            display: flex;
+            flex-direction: column;
+            background: none;
+            height: 100%;
+        }
+
+        .trip {
+            background-color: orangered;
+        }
+
+        .on {
+            background-color: lightgreen;
+        }
+
+        .nominal {
+            visibility: hidden;
+        }
+
+
+        input[type=text] {
+            font-size: 4vmin;
+            width: 40vw;
+            padding: 0px 0px;
+            margin: 0px 0;
+            box-sizing: border-box;
+        }
+
+        input[type=button] {
+            width: 40vw;
+            font-size: 4vmin;
+        }
+
+        BODY {
+            FONT-SIZE: 4vmin;
+            FONT-FAMILY: Verdana, Arial, Helvetica, sans-serif
+        }
+
+        p {
+            font-size: 4vmin;
+        }
+
+        table {
+            font-size: 4vmin;
+        }
+    </style>
+
+    <script type="text/javascript">
+        //var wsUri = "wss://echo.websocket.org/";
+        var wsUri = "ws://192.168.6.1:12080/";
+
+
+        //define send-receive objects
+        var hardware = { "type": "dccUI", "cmd": "hardware", "SSID": "DCC_02", "IP": "192.168.6.1", "MAC":"return of the", "pwd": "", "wsPort": 12080, "wiPort": 12090, "action": "poll" ,"STA_SSID":"none","STA_pwd":"none" };
+        //if action=fail this indicates the changes were not successful and the current settings are returned
+
+      //****** common routine
+        var attempts = 0;
+
+        //We try twice to pull the ESP specific wsUri, if we fail
+        //then we fall back to the default wsUri defined above.
+        function boot() {
+            if (attempts > 10) { return; }
+            //var re = /echo/gm;
+            //if (re.test(wsUri)) {
+            attempts++;
+            if (attempts > 2) {
+                //connect anyway to the default wsUri
+                initWebsocket();
+            } else {
+                //try and pull the websocket addr from the server
+                httpGet("/hardware");
+                //and call self again to check we are done
+                setTimeout(function () { boot(); }, 3000);
+            }
+            //}
+
+
+        }
+
+
+        function httpGet(theUrl) {
+            if (window.XMLHttpRequest) {// code for IE7+, Firefox, Chrome, Opera, Safari
+                xmlhttp = new XMLHttpRequest();
+            }
+            else {// code for IE6, IE5
+                xmlhttp = new ActiveXObject("Microsoft.XMLHTTP");
+            }
+            xmlhttp.onreadystatechange = function () {
+                try {
+                    if (xmlhttp.readyState == 4 && xmlhttp.status == 200) {
+                        if (console) { console.log(xmlhttp.responseText) };
+
+                        var myObj = JSON.parse(xmlhttp.responseText);
+                        if (!myObj.type) return;
+                        if (myObj.type != "dccUI") return;
+                        hardware = myObj;
+                        wsUri = "ws://" + hardware.IP + ":" + hardware.wsPort
+                        if (console) console.log(wsUri);
+                        //connect to the websocket provided by the ESP server
+                        initWebsocket();
+                    }
+                }
+                catch (e) {
+                    if (console) console.log(e.message);
+                }
+            }
+            //XMLHttpRequest.open(method, url[, async[, user[, password]]])
+            xmlhttp.open("GET", theUrl, true);
+            //calling syc requests on main thread is deprecated due to response lock-ups
+            //in our case we need to know the response before we can initialise the websocket
+            xmlhttp.send();
+
+            //now call boot again after 3 sec
+
+        }
+
+
+
+        function initWebsocket() {
+            if (console) { console.log("initWebsocket") };
+            //signal to boot timeout to stop
+            attempts = 10;
+
+            websocket = new WebSocket(wsUri);
+            websocket.onopen = function (evt) {
+                onOpen(evt)
+            };
+
+            websocket.onclose = function (evt) {
+                onClose(evt)
+            };
+
+            websocket.onmessage = function (evt) {
+                onMessage(evt)
+
+            };
+
+            websocket.onerror = function (evt) {
+                onError(evt)
+            };
+
+
+
+        }
+
+        //can use open/close to set a green/red connection flag
+        function onOpen(evt) {
+            if (console) {
+                console.log("websocket open");
+            }
+            //send a poll for power setting
+            setHardware("poll");
+        }
+
+        function onClose(evt) {
+            if (console) {
+                console.log("websocket close");
+            }
+
+        }
+
+        function onError(evt) {
+            if (console) {
+                console.log("websocket error");
+            }
+
+        }
+
+
+        function onMessage(evt) {
+            //in theory all commands and status requests receive back a full object if (console)
+            debug.innerHTML = evt.data;
+            repaintUI();
+        }
+
+        //can use this rather than body onload
+        // window.addEventListener("load", initWebsocket, false);
+
+
+
+
+        //******* common routine end
+
+
+   
+        function repaintUI() {
+            try {
+                var myObj = JSON.parse(debug.innerHTML);
+                if (!myObj.type) {
+                    return;
+                }
+
+                if (myObj.type != "dccUI") {
+                    return;
+                }
+
+
+                //read data into specific json object
+                if (myObj.cmd == "hardware") {
+                    if (console) {
+                        console.log("status");
+                    }
+
+                    hardware = myObj;
+
+                    SSID.value = hardware.SSID;
+                    ipAddr.value = hardware.IP;
+                
+                    pwd.value = hardware.pwd;
+                    wsPort.value = hardware.wsPort;
+                    wiPort.value = hardware.wiPort;
+                    mac.value = hardware.MAC;
+                    version.value = hardware.version;
+
+                    STA_SSID.value = hardware.STA_SSID;
+                    STA_pwd.value = hardware.STA_pwd;
+                }
+
+                
+            }
+
+            catch (e) {
+                if (console) console.log(e.message);
+            }
+        }
+
+        function setHardware(action) {
+            //do some basic validation.  Actual numeric validation is done on the sever
+
+            hardware.action = action;
+
+            var isValid = true;
+            if (isNaN(wsPort.value)) {
+                wsPort.value = "";
+                isValid = false;
+            }
+   	    hardware.wsPort=wsPort.value;
+
+            if (isNaN(wiPort.value)) {
+                wiPort.value = "";
+                isValid = false;
+            }
+	    hardware.wiPort=wiPort.value;
+
+            var re = /^((25[0-5]|(2[0-4]|1[0-9]|[1-9]|)[0-9])(\.(?!$)|$)){4}$/gm;
+            if (!re.test(ipAddr.value)) isValid = false;
+            if (console) { console.log(isValid); }
+            //need a regex for the IP port
+            //^((25[0-5]|(2[0-4]|1[0-9]|[1-9]|)[0-9])(\.(?!$)|$)){4}$
+            //https://stackoverflow.com/questions/5284147/validating-ipv4-addresses-with-regexp
+
+            //SSID needs to be >4 chars
+            if (SSID.value.length > 4) {
+                hardware.SSID = SSID.value;
+            }
+
+            //pwd needs to be 8+ chars
+            if (pwd.value.length > 7 || pwd.value=="none") {
+                hardware.pwd = pwd.value;
+            }
+
+
+            //STA SSID needs to be >4 chars
+            if (STA_SSID.value.length > 4) {
+                hardware.STA_SSID = STA_SSID.value;
+            }
+
+            //STA pwd needs to be 8+ chars
+            if (STA_pwd.value.length > 7 || STA_pwd.value == "none") {
+                hardware.STA_pwd = STA_pwd.value;
+            }
+
+            hardware.action = isValid ? action:"poll";
+		
+
+            if (console) { (console.log("setHardware")) };
+            var myJSON = JSON.stringify(hardware);
+            debug.innerHTML = myJSON;
+            websocket.send(myJSON);
+        }
+
+
+
+    </script>
+
+
+</head>
+
+<body onload="boot()">
+    <div class="outer">
+        <p><b>ESP DCC hardware</b></p>
+
+        <table border="0" style="width:100%">
+            <tr> <td width="40%">SSID</td><td width="60%"><input type="text" id="SSID" maxlength="18" /></td> </tr>
+            <tr> <td>password</td><td><input type="text" id="pwd" maxlength="18" /></td> </tr>
+
+            <tr> <td>IP address</td><td><input type="text" id="ipAddr" /></td> </tr>
+            <tr> <td>MAC</td><td><input type="text" id="mac" readonly /></td> </tr>
+            <tr> <td>version</td><td><input type="text" id="version" readonly /></td> </tr>
+
+            <tr> <td>Websocket port</td><td><input type="text" id="wsPort" /></td> </tr>
+            <tr> <td>WiThrottle port</td><td><input type="text" id="wiPort" /></td> </tr>
+
+            <tr> <td>Station SSID</td><td><input type="text" id="STA_SSID" maxlength="18" /></td> </tr>
+            <tr> <td>Station password</td><td><input type="text" id="STA_pwd" maxlength="18" /></td> </tr>
+
+
+            <tr>
+                <td id="result"></td>
+                <td style="padding-top:1vw;">
+                    <input type="button" id="btnSet" value="SET" onclick="setHardware('write')" />
+                </td>
+
+
+            </tr>
+            <tr><td colspan="2" style="font-size:4vmin"></td></tr>
+        </table>
+
+        Caution: changing a setting will require a re-boot and you will need to navigate the new SSID/IP.
+        If you change the Websocket or WiThrottle port, you also need to update these on your phone apps.
+        <br />SSID must be 4+ characters, password must be 8+ characters.
+        <br />
+        <br />
+        Station SSID is your home WiFi network.  Set blank if you want no connection.<br />
+        Use the MAC to set a fixed IP address on your home router. 
+        You may also need to port-forward the Web socket and WiThrottle ports.
+        <br />
+        <br />
+
+        <a href="index.htm">power settings</a><br /><br />
+        <p id="debug" style="visibility:hidden; font-size:2vmin"> </p>
+
+    </div>
+
+   
+</body>
+        </html >

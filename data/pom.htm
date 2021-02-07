@@ -1,0 +1,460 @@
+﻿<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!--2021-01-06-->
+    <!--galaxy S9 viewport size is 360 x 740 PX -->
+    <!--galaxy S5 viewport size is 360 x 640 PX -->
+    <!--https://css-tricks.com/snippets/css/a-guide-to-flexbox/-->
+
+    <title>ESP 2866 DCC controller - POM</title>
+
+
+    <style>
+        .outer {
+            border: solid;
+            border-width: 1px;
+            padding-left: 2vw;
+        }
+
+        .outerX {
+            display: flex;
+            flex-direction: column;
+            background: none;
+            height: 100%;
+        }
+
+        .trip {
+            background-color: orangered;
+        }
+
+        .on {
+            background-color: lightgreen;
+        }
+
+        .nominal {
+            visibility: hidden;
+        }
+
+
+        input[type=text] {
+            font-size: 4vmin;
+            width: 40vw;
+            padding: 0px 0px;
+            margin: 0px 0;
+            box-sizing: border-box;
+        }
+
+        input[type=button] {
+            width: 40vw;
+            font-size: 4vmin;
+        }
+
+        select, option, #addr {
+            width: 20vw;
+            font-size: 4vmin;
+        }
+
+        input[type=checkbox] {
+            transform: scale(2);
+           
+        }
+
+        BODY {
+            FONT-SIZE: 4vmin;
+            FONT-FAMILY: Verdana, Arial, Helvetica, sans-serif
+        }
+
+        p {
+            font-size: 4vmin;
+        }
+
+        table {
+            font-size: 4vmin;
+        }
+    </style>
+
+    <script type="text/javascript">
+        //var wsUri = "wss://echo.websocket.org/";
+        var wsUri = "ws://192.168.6.1:12080/";
+
+
+
+        //define send-receive objects
+        var power = { "type": "dccUI", "cmd": "power", "mA_limit": "", "V_limit": "", "mA": 23, "V": 2.2, "trip": true, "track": false };
+        var hardware = { "type": "dccUI", "cmd": "hardware", "SSID": "DCC_02", "IP": "192.168.7.1", "MAC": "", "pwd": "", "wsPort": 12080, "wiPort": 12090, "version": 0, "action": "poll" };
+        var pom = { "type": "dccUI", "cmd": "pom", "action": "byte", "addr":"S3", "cvReg": 0, "cvVal": "B13" };
+
+
+
+        var attempts = 0;
+
+        //We try twice to pull the ESP specific wsUri, if we fail
+        //then we fall back to the default wsUri defined above.
+        function boot() {
+            if (attempts > 10) { return; }
+            //var re = /echo/gm;
+            //if (re.test(wsUri)) {
+            attempts++;
+            if (attempts > 2) {
+                //connect anyway to the default wsUri
+                initWebsocket();
+            } else {
+                //try and pull the websocket addr from the server
+                httpGet("/hardware");
+                //and call self again to check we are done
+                setTimeout(function () { boot(); }, 3000);
+            }
+            //}
+
+
+        }
+
+
+        function httpGet(theUrl) {
+            if (window.XMLHttpRequest) {// code for IE7+, Firefox, Chrome, Opera, Safari
+                xmlhttp = new XMLHttpRequest();
+            }
+            else {// code for IE6, IE5
+                xmlhttp = new ActiveXObject("Microsoft.XMLHTTP");
+            }
+            xmlhttp.onreadystatechange = function () {
+                try {
+                    if (xmlhttp.readyState == 4 && xmlhttp.status == 200) {
+                        if (console) { console.log(xmlhttp.responseText) };
+
+                        var myObj = JSON.parse(xmlhttp.responseText);
+                        if (!myObj.type) return;
+                        if (myObj.type != "dccUI") return;
+                        hardware = myObj;
+                        wsUri = "ws://" + hardware.IP + ":" + hardware.wsPort
+                        if (console) console.log(wsUri);
+                        //connect to the websocket provided by the ESP server
+                        initWebsocket();
+                    }
+                }
+                catch (e) {
+                    if (console) console.log(e.message);
+                }
+            }
+            //XMLHttpRequest.open(method, url[, async[, user[, password]]])
+            xmlhttp.open("GET", theUrl, true);
+            //calling syc requests on main thread is deprecated due to response lock-ups
+            //in our case we need to know the response before we can initialise the websocket
+            xmlhttp.send();
+
+            //now call boot again after 3 sec
+
+        }
+
+
+
+        function initWebsocket() {
+            if (console) { console.log("initWebsocket") };
+            //signal to boot timeout to stop
+            attempts = 10;
+
+            websocket = new WebSocket(wsUri);
+            websocket.onopen = function (evt) {
+                onOpen(evt)
+            };
+
+            websocket.onclose = function (evt) {
+                onClose(evt)
+            };
+
+            websocket.onmessage = function (evt) {
+                onMessage(evt)
+
+            };
+
+            websocket.onerror = function (evt) {
+                onError(evt)
+            };
+
+
+
+        }
+
+        //can use open/close to set a green/red connection flag
+        function onOpen(evt) {
+            if (console) {
+                console.log("websocket open");
+            }         
+        }
+
+        function onClose(evt) {
+            if (console) {
+                console.log("websocket close");
+            }
+
+        }
+
+        function onError(evt) {
+            if (console) {
+                console.log("websocket error");
+            }
+
+        }
+
+
+        function onMessage(evt) {
+            //in theory all commands and status requests receive back a full object
+            debug.innerHTML = evt.data;
+            repaintUI();
+        }
+
+        //can use this rather than body onload
+        // window.addEventListener("load", initWebsocket, false);
+
+
+        function setTrack() {
+            //send command to toggle track power dccStatus.track = btnPwr.value == "ON" ? false : true;
+            power.mA_limit = "";
+            power.V_limit = "";
+            //clear a trip condition, or toggle track power
+            if (btnPwr.value == "TRIPPED") {
+                power.track = true;
+                power.trip = false;
+                //ensure we still have service mode power of 250mA
+                power.SM = true;
+            } else {
+                power.track = btnPwr.value == "ON" ? false : true;
+                if (console) (console.log("power now " + power.track))
+            }
+
+            var myJSON = JSON.stringify(power);
+            debug.innerHTML = myJSON;
+            websocket.send(myJSON);
+        }
+
+        function repaintUI() {
+            try {
+                var myObj = JSON.parse(debug.innerHTML);
+                if (!myObj.type) {
+                    return;
+                }
+
+                if (myObj.type != "dccUI") {
+                    return;
+                }
+
+                if (console) console.log("repaintUI");
+
+                //read power related data into specific json object
+                if (myObj.cmd == "power") {
+                    if (console) console.log("power");
+
+                    power = myObj;
+                    displaymA.innerHTML = power.mA;
+                    displayV.innerHTML = (power.V).toFixed(1);
+
+                    //trip condition?
+                    if (power.trip) {
+                        btnPwr.className = "trip";
+                        btnPwr.value = "TRIPPED"
+
+                    } else {
+                        btnPwr.className = power.track ? "on" : "off";
+                        btnPwr.value = power.track ? "ON" : "OFF"
+                    }
+                }
+
+                //there is no incoming pom json as the command is one way
+                if (myObj.cmd == "pom") {
+                    pom = myObj;
+                    if (pom.action == "ok") {
+                        msg.innerHTML = "written";
+                        //set a timerto clear msg in 2 sec
+                        window.setTimeout(function () { msg.innerHTML = "&nbsp;"; }, 2000);
+
+                    }
+
+                }
+            }
+
+            catch (e) {
+                if (console) console.log(e.message);
+                
+
+            }
+        }
+
+        function writeByte() {
+            //write CV byte
+            msg.innerHTML = "&nbsp;";
+            if (!doValidate()) return;
+
+            var a = selSL.value == "short" ? "S" : "L";
+            a = a + addr.value;
+            pom.addr = a;
+
+            pom.cvReg = cvReg.value;
+           
+           
+            if (isNaN(cvVal.value)) return;
+
+            if (cvVal.value > 255) {
+                cvVal.value = "";
+                return;
+            }
+
+            pom.cvVal = "B" + cvVal.value;
+            pom.action = "byte";
+            var myJSON = JSON.stringify(pom);
+            debug.innerHTML = myJSON;
+            websocket.send(myJSON);
+            msg.innerHTML = "sending pom..."
+        }
+
+
+        function writeBit() {
+            msg.innerHTML = "&nbsp;";
+            if (!doValidate()) return;
+
+            var a = selSL.value == "short" ? "S" : "L";
+            a = a + addr.value;
+            pom.addr = a;
+            pom.cvReg = cvReg.value;
+            pom.cvVal = "";
+            pom.action = "bit";
+
+            var b = selBit.value == "set" ? "S" : "C";
+            b = b + cvBit.value;
+            pom.cvVal = b;
+
+            var myJSON = JSON.stringify(pom);
+            debug.innerHTML = myJSON;
+            websocket.send(myJSON);
+            msg.innerHTML = "sending pom..."
+        }
+
+      
+
+        function doValidate() {
+            //checks address, cv register and byte value
+            //returns false if address or cv register is out of bounds
+            cvReg.value = cvReg.value.replace(/[+-\x2E]/gi, "");
+            addr.value = addr.value.replace(/[+-\x2E]/gi, "");
+            cvVal.value = cvVal.value.replace(/[+-\x2E]/gi, "");
+            if (isNaN(addr.value)) {
+                addr.value = "";
+                return false;
+            }
+            if (addr.value == 0) {
+                addr.value = "";
+                return false;
+            }
+            if (selSL.value == "short") {
+                if (addr.value > 127) {
+                    addr.value = "";
+                    return false;
+                }
+            } else {
+                if (addr.value > 10239) {
+                    addr.value = "";
+                    return false;
+                }
+
+            }
+
+
+            if (isNaN(cvReg.value)) {
+                cvReg.value = "";
+                return false;    
+            }
+            if (cvReg.value==0 || cvReg.value > 1024) {
+                cvReg.value = "";
+                return false;
+            }
+
+            if (isNaN(cvVal.value)) {
+                cvVal.value = "";
+            }
+            return true;
+        }
+
+
+    </script>
+
+
+</head>
+
+<body onload="boot()">
+    <div class="outer" >
+    <p><b>ESP DCC POM Mode</b></p>
+
+        <table border="0" style="width:100%">
+            <tr>
+                <td style="width:40%"> Status</td>
+                <td id="msg"> &nbsp;</td>
+            </tr>
+            <tr>
+                <td> mA</td>
+                <td id="displaymA"> </td>
+            </tr>
+            <tr>
+                <td> Volts</td>
+                <td id="displayV"> </td>
+            </tr>
+            <tr> <td> Track power is</td> <td> <input type="button" id="btnPwr" value="ON" onclick="setTrack()" autofocus /> </td> </tr>
+
+            <tr> <td style="padding-top:2vw;"> Set CV (POM)</td> </tr>
+            <tr>
+                <td>Loco addr</td>
+                <td><input id="addr" type="text" /><select id="selSL"><option>short</option><option>long</option></select></td>
+            </tr>
+
+
+            <tr>
+
+                <td> CV register</td>
+                <td> <input id="cvReg" type="text"> </td>
+            </tr>
+            <tr>
+                <td> Byte write</td>
+                <td> Bit write </td>
+            </tr>
+            <tr>
+                <td><input id="cvVal" type="text"></td>
+                <td><select id="cvBit">
+    <option>0</option>
+    <option>1</option>
+    <option>2</option>
+    <option>3</option>
+    <option>4</option>
+    <option>5</option>
+    <option>6</option>
+    <option>7</option>
+  
+</select>
+                    <select id="selBit"><option>set</option><option>clear</option></select>
+                      
+                   
+                </td>
+               
+            </tr>
+
+
+
+            <tr>
+                <td><input type="button" id="btnByte" value="BYTE WRITE" onclick="writeByte()"></td>
+                <td> <input type="button" id="btnBit" value="BIT WRITE" onclick="writeBit()"> </td>
+            </tr>
+          
+            <tr><td colspan="2"> <span id="debug" style="visibility:hidden; font-size:2vmin"> </span></td></tr>
+        </table>
+       
+    <br />
+    <br />
+    <a href="roster.htm" >locomotive roster</a><br /><br />
+    <a href="turnout.htm" >turnout roster</a><br /><br />
+    <a href="index.htm" >power settings</a><br /><br />
+   
+
+
+
+        </div>
+
+
+</body>
+        </html >

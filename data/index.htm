@@ -1,0 +1,357 @@
+﻿<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!--2021-01-06 -->
+    <!--galaxy S9 viewport size is 360 x 740 PX -->
+    <!--galaxy S5 viewport size is 360 x 640 PX -->
+
+    <title>ESP 2866 DCC controller - home</title>
+
+    <style>
+        .outer {
+            border: solid;
+            border-width: 1px;
+            padding-left: 2vw;
+        }
+
+        .outerX {
+            display: flex;
+            flex-direction: column;
+            background: none;
+            height: 100%;
+        }
+
+        .trip {
+            background-color: orangered;
+        }
+
+        .on {
+            background-color: lightgreen;
+        }
+
+        .nominal {
+            visibility: hidden;
+        }
+
+
+        input[type=text] {
+            font-size: 4vmin;
+            width: 40vw;
+            padding: 0px 0px;
+            margin: 0px 0;
+            box-sizing: border-box;
+        }
+
+        input[type=button] {
+            width: 40vw;
+            font-size: 4vmin;
+        }
+
+        BODY {
+            FONT-SIZE: 4vmin;
+            FONT-FAMILY: Verdana, Arial, Helvetica, sans-serif
+        }
+
+        p {
+            font-size: 4vmin;
+        }
+
+        table {
+            font-size: 4vmin;
+        }
+    </style>
+
+    <script type="text/javascript">
+        //var wsUri = "wss://echo.websocket.org/";
+        var wsUri = "192.168.6.1:12080/";
+
+
+        //define send-receive objects
+        var power = { "type": "dccUI", "cmd": "power", "mA_limit": "", "V_limit": "", "mA": 23, "V": 2.2, "trip": true, "track": false };
+        var hardware = { "type": "dccUI", "cmd": "hardware", "SSID": "DCC_02", "IP": "192.168.7.1", "MAC": "", "pwd": "", "wsPort": 12080, "wiPort": 12090, "version": 0, "action": "poll" };
+
+        var attempts = 0;
+
+        //We try twice to pull the ESP specific wsUri, if we fail
+        //then we fall back to the default wsUri defined above.
+        function boot() {
+            if (attempts > 10) { return; }
+            //var re = /echo/gm;
+            //if (re.test(wsUri)) {
+            attempts++;
+            if (attempts > 2) {
+                //connect anyway to the default wsUri
+                initWebsocket();
+            } else {
+                //try and pull the websocket addr from the server
+                httpGet("/hardware");
+                //and call self again to check we are done
+                setTimeout(function () { boot(); }, 3000);
+            }
+            //}
+
+
+        }
+
+
+        function httpGet(theUrl) {
+            if (window.XMLHttpRequest) {// code for IE7+, Firefox, Chrome, Opera, Safari
+                xmlhttp = new XMLHttpRequest();
+            }
+            else {// code for IE6, IE5
+                xmlhttp = new ActiveXObject("Microsoft.XMLHTTP");
+            }
+            xmlhttp.onreadystatechange = function () {
+                try {
+                    if (xmlhttp.readyState == 4 && xmlhttp.status == 200) {
+                        if (console) { console.log(xmlhttp.responseText) };
+
+                        var myObj = JSON.parse(xmlhttp.responseText);
+                        if (!myObj.type) return;
+                        if (myObj.type != "dccUI") return;
+                        hardware = myObj;
+                        wsUri = "ws://" + hardware.IP + ":" + hardware.wsPort
+                        if (console) console.log(wsUri);
+                        //connect to the websocket provided by the ESP server
+                        initWebsocket();
+                    }
+                }
+                catch (e) {
+                    if (console) console.log(e.message);
+                }
+            }
+            //XMLHttpRequest.open(method, url[, async[, user[, password]]])
+            xmlhttp.open("GET", theUrl, true);
+            //calling syc requests on main thread is deprecated due to response lock-ups
+            //in our case we need to know the response before we can initialise the websocket
+            xmlhttp.send();
+
+            //now call boot again after 3 sec
+
+        }
+
+
+
+        function initWebsocket() {
+            if (console) { console.log("initWebsocket") };
+            //signal to boot timeout to stop
+            attempts = 10;
+
+            websocket = new WebSocket(wsUri);
+            websocket.onopen = function (evt) {
+                onOpen(evt)
+            };
+
+            websocket.onclose = function (evt) {
+                onClose(evt)
+            };
+
+            websocket.onmessage = function (evt) {
+                onMessage(evt)
+
+            };
+
+            websocket.onerror = function (evt) {
+                onError(evt)
+            };
+
+
+
+        }
+
+        //can use open/close to set a green/red connection flag
+        function onOpen(evt) {
+            if (console) {
+                console.log("websocket open");
+            }
+            //send a poll for power setting
+            setPower();
+        }
+
+        function onClose(evt) {
+            if (console) {
+                console.log("websocket close");
+            }
+
+        }
+
+        function onError(evt) {
+            if (console) {
+                console.log("websocket error");
+            }
+
+        }
+
+
+        function onMessage(evt) {
+            //in theory all commands and status requests receive back a full object if (console)
+            debug.innerHTML = evt.data;
+            repaintUI();
+        }
+
+        //can use this rather than body onload
+        // window.addEventListener("load", initWebsocket, false);
+
+
+        function setTrack() {
+            //send command to toggle track power dccStatus.track = btnPwr.value == "ON" ? false : true;
+            power.mA_limit = "";
+            power.V_limit = "";
+            //clear a trip condition, or toggle track power
+            if (btnPwr.value == "TRIPPED") {
+                power.track = true;
+                power.trip = false;
+            } else {
+                power.track = btnPwr.value == "ON" ? false : true;
+                if (console) (console.log("power now " + power.track))
+            }
+
+            var myJSON = JSON.stringify(power);
+            debug.innerHTML = myJSON;
+            websocket.send(myJSON);
+        }
+
+        
+        function setPower() {
+            //do some basic validation.  Numeric range validation is done on the sever
+            //note that the server retransmits the settings every second which will overwrite attempts to change them
+            //for this reason, the focus event is used to suspect server-data to UI updates
+
+            setmA.value = setmA.value.replace(/[+-\x2E]/gi, "");
+            setV.value = setV.value.replace(/[+-\x2E]/gi, "");
+
+            var isValid = true;
+            if (isNaN(setmA.value)) {
+                setmA.value = "";
+                isValid = false;
+            }
+
+            if (isNaN(setV.value)) {
+                setV.value = "";
+                isValid = false;
+            } else {
+                if (setV.value < 1) { isValid = false; }
+            }
+
+
+            if (!isValid) return;
+            power.mA_limit = setmA.value;
+            power.V_limit = setV.value;
+
+            if (console) { (console.log("setPower")) };
+
+            var myJSON = JSON.stringify(power);
+            pendingEdit = false;
+            debug.innerHTML = myJSON;
+            websocket.send(myJSON);
+        }
+
+        var pendingEdit = false;
+        function repaintUI() {
+            try {
+                var myObj = JSON.parse(debug.innerHTML);
+                if (!myObj.type) {
+                    return;
+                }
+
+                if (myObj.type != "dccUI") {
+                    return;
+                }
+
+
+                //read data into specific json object
+                if (myObj.cmd == "power") {
+                    if (console) {
+                        console.log("power");
+                    }
+
+                    power = myObj;
+
+                    displaymA.innerHTML = power.mA;
+                    displayV.innerHTML = (power.V).toFixed(1);
+
+                    if (pendingEdit == false) {
+                        //only update the limit values if user is not currently attempting to edit them.
+                        setmA.value = power.mA_limit;
+                        setV.value = power.V_limit;
+                    }
+                    //trip condition?
+                    if (power.trip) {
+                        btnPwr.className = "trip";
+                        btnPwr.value = "TRIPPED"
+
+                    } else {
+                        btnPwr.className = power.track ? "on" : "off";
+                        btnPwr.value = power.track ? "ON" : "OFF"
+                    }
+                }
+
+
+            }
+
+            catch (e) {
+                if (console) {
+                    console.log(e.message);
+                }
+
+            }
+        }
+
+    </script>
+
+
+</head>
+
+<body onload="boot()">
+    <div class="outer">
+        <p><b>ESP DCC power settings</b></p>
+
+        <table border="0" style="width:100%">
+            <tr>
+                <td style="width:40%"> Status</td>
+                <td> &nbsp;</td>
+            </tr>
+            <tr>
+                <td> mA</td>
+                <td id="displaymA"> </td>
+            </tr>
+            <tr>
+                <td> Volts</td>
+                <td id="displayV"> </td>
+            </tr>
+            <tr> <td> Track power is</td> <td> <input type="button" id="btnPwr" value="ON" onclick="setTrack()" autofocus /> </td> </tr>
+
+            <tr> <td style="padding-top:2vw;"> Set trip threshold</td> </tr>
+            <tr>
+
+                <td> mA</td>
+                <td> <input id="setmA" type="text" onfocus="pendingEdit = true;"/> </td>
+            </tr>
+            <tr>
+                <td> Volts</td>
+                <td> <input id="setV" type="text" onfocus="pendingEdit = true;" /> </td>
+            </tr>
+            <tr>
+                <td>&nbsp;</td>
+                <td> <input type="button" id="btnSet" value="SET" onclick="setPower()" onfocus="pendingEdit = true;" /> </td>
+
+            </tr>
+            <tr><td colspan="2"> <span id="debug" style="visibility:hidden; font-size:2vmin"> </span></td></tr>
+        </table>
+
+        <br />
+        <br />
+        <a href="roster.htm">locomotive roster</a><br /><br />
+        <a href="turnout.htm">turnout roster</a><br /><br />
+        <a href="service.htm">service mode (prog track)</a><br /><br />
+        <a href="pom.htm">programme on main (POM)</a><br /><br />
+        <a href="hardware.htm">hardware settings</a><br /><br />
+
+
+
+
+    </div>
+
+
+</body>
+        </html >

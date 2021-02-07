@@ -1,0 +1,411 @@
+﻿<html xmlns="http://www.w3.org/1999/xhtml">
+<head>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!--2021-01-06 -->
+    <!--galaxy S9 viewport size is 360 x 740 PX -->
+    <!--galaxy S5 viewport size is 360 x 640 PX -->
+
+    <title>ESP 2866 DCC controller - Service Mode</title>
+
+      <style>
+        .outer {
+            border: solid;
+            border-width: 1px;
+            padding-left: 2vw;
+        }
+
+        .outerX {
+            display: flex;
+            flex-direction: column;
+            background: none;
+            height: 100%;
+        }
+
+        .trip {
+            background-color: orangered;
+        }
+
+        .on {
+            background-color: lightgreen;
+        }
+
+        .nominal {
+            visibility: hidden;
+        }
+
+
+        input[type=text] {
+            font-size: 4vmin;
+            width: 40vw;
+            padding: 0px 0px;
+            margin: 0px 0;
+            box-sizing: border-box;
+        }
+
+        input[type=button] {
+            width: 40vw;
+            font-size: 4vmin;
+        }
+
+        BODY {
+            FONT-SIZE: 4vmin;
+            FONT-FAMILY: Verdana, Arial, Helvetica, sans-serif
+        }
+
+        p {
+            font-size: 4vmin;
+        }
+
+        table {
+            font-size: 4vmin;
+        }
+    </style>
+
+    <script type="text/javascript">
+        //var wsUri = "wss://echo.websocket.org/";
+        var wsUri = "ws://192.168.6.1:12080/";
+
+
+
+        //define send-receive objects
+        var power = { "type": "dccUI", "cmd": "power", "mA_limit": "", "V_limit": "", "mA": 23, "V": 2.2, "trip": true, "track": false };
+        var hardware = { "type": "dccUI", "cmd": "hardware", "SSID": "DCC_02", "IP": "192.168.7.1", "MAC": "", "pwd": "", "wsPort": 12080, "wiPort": 12090, "version": 0, "action": "poll" };
+        //var service = { "type": "dccUI", "cmd": "service", "cvReg": 0, "cvVal": -1, "action": "reg" };
+        var service = { "type": "dccUI", "cmd": "service", "action": "read" };
+        
+
+
+        var attempts = 0;
+
+        //We try twice to pull the ESP specific wsUri, if we fail
+        //then we fall back to the default wsUri defined above.
+        function boot() {
+            if (attempts > 10) { return; }
+            //var re = /echo/gm;
+            //if (re.test(wsUri)) {
+            attempts++;
+            if (attempts > 2) {
+                //connect anyway to the default wsUri
+                initWebsocket();
+            } else {
+                //try and pull the websocket addr from the server
+                httpGet("/hardware");
+                //and call self again to check we are done
+                setTimeout(function () { boot(); }, 3000);
+            }
+            //}
+
+
+        }
+
+
+        function httpGet(theUrl) {
+            if (window.XMLHttpRequest) {// code for IE7+, Firefox, Chrome, Opera, Safari
+                xmlhttp = new XMLHttpRequest();
+            }
+            else {// code for IE6, IE5
+                xmlhttp = new ActiveXObject("Microsoft.XMLHTTP");
+            }
+            xmlhttp.onreadystatechange = function () {
+                try {
+                    if (xmlhttp.readyState == 4 && xmlhttp.status == 200) {
+                        if (console) { console.log(xmlhttp.responseText) };
+
+                        var myObj = JSON.parse(xmlhttp.responseText);
+                        if (!myObj.type) return;
+                        if (myObj.type != "dccUI") return;
+                        hardware = myObj;
+                        wsUri = "ws://" + hardware.IP + ":" + hardware.wsPort
+                        if (console) console.log(wsUri);
+                        //connect to the websocket provided by the ESP server
+                        initWebsocket();
+                    }
+                }
+                catch (e) {
+                    if (console) console.log(e.message);
+                }
+            }
+            //XMLHttpRequest.open(method, url[, async[, user[, password]]])
+            xmlhttp.open("GET", theUrl, true);
+            //calling syc requests on main thread is deprecated due to response lock-ups
+            //in our case we need to know the response before we can initialise the websocket
+            xmlhttp.send();
+
+            //now call boot again after 3 sec
+
+        }
+
+
+
+        function initWebsocket() {
+            if (console) { console.log("initWebsocket") };
+            //signal to boot timeout to stop
+            attempts = 10;
+
+            websocket = new WebSocket(wsUri);
+            websocket.onopen = function (evt) {
+                onOpen(evt)
+            };
+
+            websocket.onclose = function (evt) {
+                onClose(evt)
+            };
+
+            websocket.onmessage = function (evt) {
+                onMessage(evt)
+
+            };
+
+            websocket.onerror = function (evt) {
+                onError(evt)
+            };
+
+
+
+        }
+
+        //can use open/close to set a green/red connection flag
+        function onOpen(evt) {
+            if (console) {
+                console.log("websocket open");
+            }
+            //send a poll for power setting and enter service mode
+            enterService();
+        }
+
+        function onClose(evt) {
+            if (console) {
+                console.log("websocket close");
+            }
+
+        }
+
+        function onError(evt) {
+            if (console) {
+                console.log("websocket error");
+            }
+
+        }
+
+
+        function onMessage(evt) {
+            //in theory all commands and status requests receive back a full object if (console)
+            debug.innerHTML = evt.data;
+            repaintUI();
+        }
+
+        //can use this rather than body onload
+        // window.addEventListener("load", initWebsocket, false);
+
+
+        function setTrack() {
+            //send command to toggle track power dccStatus.track = btnPwr.value == "ON" ? false : true;
+            power.mA_limit = "";
+            power.V_limit = "";
+            //clear a trip condition, or toggle track power
+            if (btnPwr.value == "TRIPPED") {
+                power.track = true;
+                power.trip = false;
+                //ensure we still have service mode power of 250mA
+                power.SM = true;
+            } else {
+                power.track = btnPwr.value == "ON" ? false : true;
+                if (console) (console.log("power now " + power.track))
+            }
+
+            var myJSON = JSON.stringify(power);
+            debug.innerHTML = myJSON;
+            websocket.send(myJSON);
+        }
+
+        function repaintUI() {
+            try {
+                var myObj = JSON.parse(debug.innerHTML);
+                if (!myObj.type) {
+                    return;
+                }
+
+                if (myObj.type != "dccUI") {
+                    return;
+                }
+
+                if (console) console.log("repaintUI");
+
+                //read power related data into specific json object
+                if (myObj.cmd == "power") {
+                    if (console) console.log("power");
+                   
+                    power = myObj;
+                    displaymA.innerHTML = power.mA;
+                    displayV.innerHTML = (power.V).toFixed(1);
+                   
+                    //trip condition?
+                    if (power.trip) {
+                        btnPwr.className = "trip";
+                        btnPwr.value = "TRIPPED"
+
+                    } else {
+                        btnPwr.className = power.track ? "on" : "off";
+                        btnPwr.value = power.track ? "ON" : "OFF"
+                    }
+                }
+
+                if (myObj.cmd == "service") {
+                    if (console) console.log("service");
+                    service = myObj;
+
+                    switch (service.action) {
+                        case "result":
+                            cvVal.value = service.cvVal != -1 ? service.cvVal:"???";
+                            break;
+                        case "fail":
+                            cvVal.value = "???";
+                            break;
+                        case "test":
+                            cvVal.value = service.cvVal;
+                            cvReg.value = service.cvReg;
+                    }
+                }
+            }
+
+            catch (e) {
+                if (console) {
+                    console.log(e.message);
+                }
+
+            }
+        }
+
+        function writeCV() {
+            //write CV byte
+            cvReg.value = cvReg.value.replace(/[+-\x2E]/gi, "");
+            cvVal.value = cvVal.value.replace(/[+-\x2E]/gi, "");
+            service.cvReg = cvReg.value;
+            service.cvVal = cvVal.value;
+            if (isNaN(cvReg.value))  {
+                cvReg.value = "";
+                return;
+            }
+            if (isNaN(cvVal.value)) {
+                cvVal.value = "";
+                return;
+            }
+            service.action = "direct";
+            var myJSON = JSON.stringify(service);
+            debug.innerHTML = myJSON;
+            websocket.send(myJSON);
+        }
+
+        //when we call readCV, we set action=read and this initiates a read.
+        //the result comes back after a delay of around 1sec and is handled in repaintUI.
+      
+        function readCV() {
+            if (console) console.log("readCV");
+            
+                   //initiate first read
+                    service.action = "read";
+                    cvReg.value = cvReg.value.replace(/[+-\x2E]/gi, "");
+                if ((cvReg.value < 0) || (cvReg.value > 1024)) {
+                    cvReg.value = "";
+                    return;
+                }
+
+                    service.cvReg = cvReg.value;
+                    cvVal.value = "---";
+                    
+                    var myJSON = JSON.stringify(service);
+                    debug.innerHTML = myJSON;
+                    websocket.send(myJSON);
+                                 
+        }
+
+
+        function enterService() {
+ if (console) { (console.log("enterService debug")) };
+
+
+            //enter service mode
+            if (console) { (console.log("enterService")) };
+
+            //var myJSON = JSON.stringify(power);
+            //debug.innerHTML = myJSON;
+           //websocket.send(myJSON);
+
+            service.action = "enter";
+            var myJSON = JSON.stringify(service);
+            debug.innerHTML = myJSON;
+            websocket.send(myJSON);
+
+        }
+
+        function exitService() {
+            //exit service mode
+            if (console) { (console.log("exitService")) };
+
+            service.action = "exit";
+            var myJSON = JSON.stringify(service);
+            debug.innerHTML = myJSON;
+            websocket.send(myJSON);
+
+        }
+
+
+
+    </script>
+
+
+</head>
+
+<body onload="boot()">
+    <div class="outer" >
+    <p><b>ESP DCC Service Mode</b></p>
+    You are now in Service Mode. Track power is limited to 250mA.<br />
+        Navigate to any other page to exit Service Mode and restore full track power.<br />
+        <br />
+        <table border="0" style="width:100%">
+            <tr>
+                <td style="width:40%"> Status</td>
+                <td> &nbsp;</td>
+            </tr>
+            <tr>
+                <td> mA</td>
+                <td id="displaymA"> </td>
+            </tr>
+            <tr>
+                <td> Volts</td>
+                <td id="displayV"> </td>
+            </tr>
+            <tr> <td> Track power is</td> <td> <input type="button" id="btnPwr" value="ON" onclick="setTrack()" autofocus /> </td> </tr>
+
+            <tr> <td style="padding-top:2vw;"> Set CV (programming track)</td> </tr>
+            <tr>
+
+                <td> CV register</td>
+                <td> <input id="cvReg" type="text" > </td>
+            </tr>
+            <tr>
+                <td> Value</td>
+                <td> <input id="cvVal" type="text" > </td>
+            </tr>
+            <tr>
+                <td><input type="button" id="btnRead" value="READ CV REG" onclick="readAttempts = 0;service.action = 'read'; readCV();"></td>
+                <td> <input type="button" id="btnDirect" value="DIRECT WRITE" onclick="writeCV()"> </td>
+            </tr>
+          
+            <tr><td colspan="2"> <span id="debug" style="visibility:hidden; font-size:2vmin"> </span></td></tr>
+        </table>
+       
+    <br />
+    <br />
+    <a href="roster.htm" onclick="exitService();">locomotive roster</a><br /><br />
+    <a href="turnout.htm" onclick="exitService();">turnout roster</a><br /><br />
+    <a href="index.htm" onclick="exitService();">power settings</a><br /><br />
+   
+
+
+
+        </div>
+
+
+</body>
+        </html >
