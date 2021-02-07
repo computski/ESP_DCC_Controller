@@ -1,5 +1,5 @@
 # ESP_DCC_Controller
-DCC controller based on nodeMCU ESP12-E device for model railroad
+DCC controller based on nodeMCU ESP12-E module for model railroad control.  This is an ESP8266 device, not an ESP32.
 
 Implements a DCC controller and JRMI server which supports mobile clients running EngineDriver (android) or WiThrottle (IOS). To allow a lower cost build, it is not necessary to fit the optional 4 x 4 keypad matrix, Jogwheel and 1602 LCD display.
 
@@ -16,3 +16,6 @@ it is also provided on a web interface.
 The web interface consists of static HTML pages served through a webserver - these pages are held in the data directory and this must also be uploaded to the target device.  Interactivity on these pages is provied via Websockets and Javascript on the pages themselves.
 
 Various H-driver power boards can be used, such as the common L298 dual H module, the LMD18200 module or IBT2 module.  The author also designed a system board to integrate these elements on along with an INA219 current monitor.  The board also supports an integrated LMD18200 providing a 4Amp maximum load.   Gerber files will be made available along with circuit schematics.
+
+Does not support LocoNet or DCC++ at this time
+Does not support DigiTrains throttle on mobile (this is websockets based)
