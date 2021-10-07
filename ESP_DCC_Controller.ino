@@ -4,7 +4,7 @@
 
 /*
 	Name:       ESP_DCC_Controller.ino
-	Created:	2021-02-07
+	updated:	2021-10-07
 	Author:     Julian Ossowski
 	Target:		NodeMCU 1.0 (ESP-12E Module)
 	Note:		This device is 4M flash with 1M spiffs. The spiffs hold the webserver files
@@ -23,11 +23,10 @@
 
 
 
-#include <ESP8266WebServerSecure.h>
 #include <ESP8266WebServer.h>
 #include "Global.h"
 #include <EEPROM.h>
-#include <Adafruit_INA219.h>
+#include <Adafruit_INA219.h>  //from arduino library manager
 #include <ESP8266WiFi.h>
 
 #include "DCCcore.h"
@@ -35,17 +34,15 @@
 #include "DCCweb.h"
 #include "WiThrottle.h"
 
-//#include "JsonThrottle.h"  exclude for now
 
 
 //PIN ASSIGNMENTS - see global.h
-//found that NMI in DCClayer1 conflicts with the WSP826WebServer. Had to switch to regular ints.  There is no conflict with Websockets
-
+//found that NMI in DCClayer1 conflicts with the WSP826WebServer. 
+//Had to switch to regular ints.  There is no conflict with Websockets
 
 
 uint16_t secCount;
 bool    bLED;
-
 
 /*DCC signal will appear on gpio12, which is D6*/
 uint32 io_info[3] = { PERIPHS_IO_MUX_MTDI_U,  FUNC_GPIO12, 12 }; //primary on GPIO12 D6
@@ -104,34 +101,6 @@ void setup() {
 	WiFi.softAPConfig(Ip, Ip, NMask);
 	//declare the IP of the AP
 	Serial.println(WiFi.softAPIP());
-
-	//now establish a connection to an external WiFi network, e.g. your home internet
-	//if STA_SSID is blank, no connection is atttempted
-	/*disable for now.
-	if (bootController.STA_SSID[0] != '\0') {
-		//
-		WiFi.begin(bootController.STA_SSID, bootController.STA_pwd);
-		Serial.print(F("Connecting to "));
-		Serial.print(bootController.STA_SSID);
-		// Loop continuously while WiFi is not connected
-		int t = 0;
-		while (WiFi.status() != WL_CONNECTED)
-		{
-			delay(100);
-			Serial.print(".");
-			if (++t >= 50) break;
-		}
-
-		if (WiFi.status() == WL_CONNECTED) {
-			Serial.print(F("Connected! IP address: "));
-			Serial.println(WiFi.localIP());
-		}else{
-			Serial.println(F("FAILED"));
-		}
-
-	}
-	*/
-
 	Serial.printf("mode %d\r\n", WiFi.getMode());
 
 #ifdef _DCCWEB_h		

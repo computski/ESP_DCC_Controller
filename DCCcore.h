@@ -18,11 +18,12 @@
 
 
 /*version control and capture of some system defaults for new compilations*/
+/*note, code at present does not support logging onto a network as a station*/
 struct CONTROLLER
 {
-	long	softwareVersion = 20210206;  //yyyymmdd captured as an integer
-	uint16_t	currentLimit = 2000;
-	uint8_t	voltageLimit = 14;
+	long	softwareVersion = 20210930;  //yyyymmdd captured as an integer
+	uint16_t	currentLimit = 1000;
+	uint8_t	voltageLimit = 15;
 	char SSID[21] = "DCC_ESP";
 	char pwd[21] = "";
 	char IP[17] = "192.168.6.1\0";   //note the actual setting requires comma sep
@@ -35,6 +36,12 @@ struct CONTROLLER
 	bool flagTurnoutRoster;
 	bool bootAsAP =false;
 };
+
+//note for testing
+//home page is http://192.168.6.1 index.htm
+//websocket tests on ws://192.168.6.1:12080
+
+
 
 /*current monitoring is performed as part of the power object
 trip and trackpower are passive status flags, changing them does not cause the unit to 
@@ -215,7 +222,6 @@ void debugTurnoutArray(void);
 
 /*static functions*/
 //keypad related
-//static int8_t setLocoFromKey(KEYPAD &k);
 static int8_t setTurnoutFromKey(KEYPAD &k);
 static int8_t setFunctionFromKey(KEYPAD &k);
 static void changeDigit(char digitASCII, uint8_t digPos, uint8_t *target);
@@ -239,7 +245,7 @@ static int8_t setLoco(LOCO *loc, int8_t speed, bool dir);
 int8_t findLoco(char *address, char *slotAddress, bool ignoreEmpty = false);
 int8_t findTurnout(uint16_t turnoutAddress);
 static LOCO *getNextLoco(LOCO *loc);
-
+void incrLocoHistory(LOCO *loc);
 
 /*end list of functions */
 

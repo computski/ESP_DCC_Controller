@@ -10,10 +10,10 @@
 #endif
 
 #include "Global.h"
-#include <ArduinoJson.h>
+#include <ArduinoJson.h>   //from arduino library manager.  you want VERSION 5 only!
 #include <ESP8266WebServer.h>
 #include <FS.h>   //SPIFFS library
-#include <WebSockets.h>
+#include <WebSockets.h>  //from arduino library manager. Markus Sattler v2.1
 #include <WebSocketsServer.h>
 
 

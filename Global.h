@@ -9,8 +9,7 @@
 	#include "WProgram.h"
 #endif
 
-/*SSID DCC01  IP 192.168.4.1   ws://192.168.4.1:81*/
-
+//see DDCcore.h for IP address and websocket port
 
 
 /*
@@ -62,9 +61,10 @@
  #if defined(BOARD_ONE)
 	/*BOARD ONE, blue LCD on 3v3 supply using mjkdz backpack address 0x20
 	keyscan uses PCF8574AT on address 0x3F jumpers leftmost. Range 38-3F
+	whereas PCF8574T has address range 20-27h
 	on board LMD18200T and INA219 fitted*/
 	#define KEYPAD_ADDRESS 0x3F   //pcf8574AT
-	#define BOOTUP_LCD LiquidCrystal_I2C lcd(0x20, 4, 5, 6, 0, 1, 2, 3, 7, NEGATIVE);
+	#define BOOTUP_LCD LiquidCrystal_I2C lcd(0x20, 4, 5, 6, 0, 1, 2, 3, 7, NEGATIVE); //mjkdz backpack
 	#define POWER_ON  HIGH
 	#define POWER_OFF  LOW
 
@@ -72,17 +72,17 @@
 	/*BOARD TWO, yellow LCD on 5v supply using YwRobot clone backpack address 0x27
 	 *keypad uses PCF8574T on address 0x20 jumpers rightmost. Range 20-2F
 	 *off-board IBT2 and INA219 fitted*/
-	#define KEYPAD_ADDRESS 0x20
-	#define BOOTUP_LCD LiquidCrystal_I2C lcd(0x27, 2, 1, 0, 4, 5, 6, 7, 3, POSITIVE);
+	#define KEYPAD_ADDRESS 0x20   //pcf8574T
+	#define BOOTUP_LCD LiquidCrystal_I2C lcd(0x27, 2, 1, 0, 4, 5, 6, 7, 3, POSITIVE); //YwRobot backpack
 #define POWER_ON  HIGH
 #define POWER_OFF  LOW
 
 #elif defined(BOARD_THREE)
 	/*BOARD THREE, yellow LCD on 5v supply using YwRobot clone backpack address 0x27
-	 keypad uses PCF8574T on address 0x20 jumpers rightmost. Range 20-2F
-	 on board LMD18200T and INA219 fitted*/
+	keyscan uses PCF8574AT on address 0x3F jumpers leftmost. Range 38-3F
+	on-board LMD18200T and INA219 fitted*/
 #define KEYPAD_ADDRESS 0x3F   //pcf8574AT
-#define BOOTUP_LCD LiquidCrystal_I2C lcd(0x27, 2, 1, 0, 4, 5, 6, 7, 3, POSITIVE);
+#define BOOTUP_LCD LiquidCrystal_I2C lcd(0x27, 2, 1, 0, 4, 5, 6, 7, 3, POSITIVE);  //YwRobot backpack
 #define POWER_ON  HIGH
 #define POWER_OFF  LOW
 
@@ -92,12 +92,15 @@
 however, we may need to define for scaling resistor purposes*/
 
 /*if you increase max loco or turnout, beware of exceeding the EEPROM dimensions*/
-#define	MAX_LOCO	4
+/*and more importantly beware exceeding the JSON output buffer length, 800 is ok for 8 locos*/
+/*important: if you change max loco, change the software version date in DCCcore.h to force a wipe and reload of
+the EEPROM*/
+#define	MAX_LOCO	8   
 #define	MAX_TURNOUT	8
 #define LOCO_ESTOP_TIMEOUT 8
 
-
-#define TRACE
+//set nTRACE to disable, TRACE to enable serial tracing.  Disable for production.
+#define nTRACE   
 
 //https ://stackoverflow.com/questions/7246512/ifdef-inside-a-macro
 

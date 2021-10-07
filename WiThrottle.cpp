@@ -15,6 +15,9 @@ https://www.jmri.org/help/en/package/jmri/jmrit/withrottle/Protocol.shtml
  vector message queue implementing std::string.  This will avoid memory leaks and allow variable length
  messages compared to using char arrays.  vector.clear() will not clean up the memory that the pointers reference.
 
+ 2021-09-09 hit a bug with MAX_LOCO=8, seems that sendLoco() will not send entire loco roster correctly
+ and truncates at 599 bytes.  Is there a finite string length on ESP8266?
+
 
  Modue supports the following EngineDriver/WiThrottle features;
  loco roster
@@ -161,10 +164,11 @@ static void handleError(void* arg, AsyncClient* client, int8_t error) {
 }
 
 
-
+//inbound data from client
 static void handleData(void* arg, AsyncClient* client, void *data, size_t len) {
 	//2021-01-30 timeout handling. If we see any message from a client, reset its timeout
 	//2021-02-03 keep seeing timeouts. Make timeout double the period that the client was instructed to respond on. 
+	//2021-09-09 if you have say MAX_LOCO=8 the buffer may not be big enough to capture all incoming data from loco.htm
 		for (auto &c : clients) {
 			if (c.client == client) {
 				//reset the client timeout, timeout is set in seconds, but the timebase is 250mS
@@ -396,6 +400,9 @@ void nsWiThrottle::sendToClient(char *data, AsyncClient *client) {
 }
 
 /*send data to a specific client, or all if client=nullptr. overload takes std::string*/
+//2021-09-09 bug, if MAX_LOCO=8 we seem to run out of buffer at 599 chars when transmitting the entire loco roster
+//std::string::max_size() will tell you the theoretical limit imposed by the architecture your program is running under. 
+//internet says ESP will truncate at Ethernet frame buffer len of 1500 bytes
 void nsWiThrottle::sendToClient(std::string s, AsyncClient *client) {
 	//const char *data = s.c_str(); will cause a crash if you use it to call sendToClient
 	//need to copy the data to a new array
@@ -408,6 +415,11 @@ void nsWiThrottle::sendToClient(std::string s, AsyncClient *client) {
 			
 		//we used new to create *data.  delete now else you create a memory leak
 		delete data;
+
+		//2021-09-09 instead, would this work?  std::string.data is a const pointer to the data
+		//warning: anything that modifies string.data will cause a crash
+		//sendToClient(s.data, client);
+
 	}
 
 }
@@ -453,6 +465,7 @@ void nsWiThrottle::checkClientID(AsyncClient *client) {
 /*add or release locos to/from MultiThrottles on specific ip clients.  MT=0xFF to signifiy all throttles on that client*/
 int8_t nsWiThrottle::addReleaseThrottle(AsyncClient* toClient, char MT, char *address, bool doAdd) {
 	if (toClient == nullptr) return-1;
+	trace(Serial.println("addRT");)
 
 	//re-write.  we flag for release, we don't delete throttle items here
 	for (auto& throttle : throttles) {
@@ -489,6 +502,8 @@ int8_t nsWiThrottle::addReleaseThrottle(AsyncClient* toClient, char MT, char *ad
 
 	if (!doAdd) return -1;
 
+	trace(Serial.println("addRT2");)
+
 	/*adding a throttle.   It is assumed 'safe' to do so, i.e. doCheckSteal was called prior*/
 	THROTTLE myT;
 	strncpy(myT.address, address, 7);
@@ -497,8 +512,9 @@ int8_t nsWiThrottle::addReleaseThrottle(AsyncClient* toClient, char MT, char *ad
 	/*find matching loco slot, or assign one*/
 	myT.locoSlot = findLoco(address, NULL);
 	/*flag as a new assignment*/
-	myT.MTaction = MT_NEWADD;
 
+	myT.MTaction = MT_NEWADD;
+	trace(Serial.println("addRT3");)
 
 	/*add item if valid slot found, i.e. positive slot value*/
 	if ((myT.locoSlot >= 0) && (myT.locoSlot < MAX_LOCO)) {
@@ -516,6 +532,8 @@ int8_t nsWiThrottle::addReleaseThrottle(AsyncClient* toClient, char MT, char *ad
 		//2021-1-15 flag the roster has changed
 		bootController.flagLocoRoster = true;
 	}
+	trace(Serial.println("addRT4");)
+
 	return myT.locoSlot;
 }
 
@@ -809,7 +827,7 @@ bool nsWiThrottle::checkDoSteal(char *address, bool checkOnly, bool &isConsist) 
 	/*for a given loco address, find which MT(s) it is on, and then for a given MT find how many other entries that MT has*/
 	/*if not checkOnly, we set the slot references to -1 to force that throttle to release its loco(s)*/
 
-	trace(Serial.printf("chkDo %d\r\n", throttles.size());)
+	trace(Serial.printf("chkDS %d\r\n", throttles.size());)
 	for (auto throttle : throttles)
 	{
 		c = 0;
@@ -874,6 +892,7 @@ void nsWiThrottle::queueMessage(std::string s, AsyncClient *client) {
 void nsWiThrottle::setConsistID(THROTTLE *t) {
 	if (t == nullptr) return;
 	if (t->locoSlot<0 || t->locoSlot>MAX_LOCO) return;
+	trace(Serial.println("setCID");)
 
 	/*scan throttles, is this a consist and does it have an ID?*/
 	for (auto throttle : throttles) {

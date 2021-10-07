@@ -11,7 +11,8 @@
 	#include "WProgram.h"
 #endif
 
-#include <ESPAsyncTCP.h>
+#include <ESPAsyncTCP.h>  //Github me-no-dev/ESPAsyncTCP
+#include <string>   //required if you wish to compile in arduino IDE this is the std::string library
 
 namespace nsWiThrottle {
 
@@ -76,4 +77,3 @@ namespace nsWiThrottle {
 
 }
 #endif
-

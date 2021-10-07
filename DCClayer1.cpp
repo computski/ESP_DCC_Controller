@@ -9,21 +9,6 @@ The routine also sets a msTickFlag every 10mS which the main loop can use for ge
 keyboard scans.
 
 
-2020-06-08 RailCom cutout.  RailCom is not supported at this time.
-S9.3.2 para 2.1.  After each packet transmission power is disconnected from the track and the track X-Y is shorted
-so that a current loop can be detected. Per 2.4, the cutout time shall be 450uS.
-NOTE: this routine originally only controlled the dcc signal pin(s).  On the in-built LMD18200T hardware, I control PWM, DIR and
-BRAKE is tied to ground.  Per the logic table, if PWM is low the two output drivers are both connected to Source and are
-therefore 'shorted' to allow a current loop. On my hardware it is not possible to make the drivers open circuit (as brake
-cannot go high). i.e. the hardware is RailCom compatible as we an support a current loop through the booster.
-
-a DDC 1 is 116uS.  a preamble is a series of 1s.  Railcom cutout at 450us is approx 4 x 1-bit periods = 464uS
-and during this time we need to set PWM=low.  Dir=don't care.  its not possible to read the output latch state on the ESP
-easily, so we need to abstract main-loop power cut-off to the DCC packet object and have layer-one OR this in as required.
-
-will this work for other hardware? L298, we drive the IN1 and IN2 with antiphase DCC signals, so to implement a RailCom cutout
-we need to take both these logic levels to the same.   Ditto for the BT2 driver.  For both these two types of drivers, the Enable
-logic will make the drivers go open-circuit.   We need conditional compilation to differentiate the drive types.
 
 
 Note: using non PWM compat mode, the timebase is 200nS.
@@ -55,14 +40,12 @@ Note: using non PWM compat mode, the timebase is 200nS.
 #define ticksZERO 116  //116uS half cycles for DCC zero
 #define ticksONE  58  //58uS half cycles for DCC one
 #define ticksMS  172  //10mS interval
-#define ticksRAILCOM 450 //450uS railcom cutout
 
 #else
 /*ticks are 200nS*/
 #define ticksZERO 580  //116uS half cycles for DCC zero
 #define ticksONE  281  //58uS half cycles for DCC one, was 290 tweaked to 281
 #define ticksMS  172  //10mS interval.  will need adjusting from 172
-#define ticksRAILCOM 2250 //450uS railcom cutout
 #endif
 
 

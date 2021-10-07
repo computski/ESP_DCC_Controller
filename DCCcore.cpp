@@ -6,13 +6,15 @@
 #include "DCClayer1.h"
 #include "DCCweb.h"
 
-#include <LiquidCrystal_I2C.h>
+#include <LiquidCrystal_I2C.h>   //Github mlinares1998/NewLiquidCrystal
+//https://github.com/mlinares1998/NewLiquidCrystal
+
 #include <Adafruit_INA219.h>
 
 
 
 /*LCD specific I2C hardware wireup, uses the LiquidCrystal_I2C library from
-https://bitbucket.org/fmalpartida/new-liquidcrystal/wiki/Home
+https://bitbucket.org/fmalpartida/new-liquidcrystal/wiki/Home   boo, dead link
 allows you to wire-up the pins P0-P7 to match the EN,RW etc pins on the display
 addr, en,rw,rs,d4,d5,d6,d7,bl,blpol
 BOOTUP_LCD creates an instance of the LiquidCrystal_I2C class and defines its parameters
@@ -20,6 +22,15 @@ its defined in Global.h hardware section
 */
 
 
+//2021-09-12 new bug. If there is a current trip, Estop no longer clears it.  nor does toggling power
+//on withrottle.  suspect its re-triggering. i did modify the timeout-go-to-dccLoco state thing.
+//case M_ESTOP: in dccCore. but i think there is more to it.  DCCweb will set power.trip=false
+//but it retriggers after a second - so i suspect the trip value held on display is retriggering
+		
+
+
+//2021-09-13 setting a turnout address on the dsky does not immediately allow toggling via # key
+//also am thinking perhaps abcd should allow direct addressing into a slot with eeprom write
 
 BOOTUP_LCD
 
@@ -178,6 +189,7 @@ uint8_t m_ledCount;
 
 static uint8_t m_locoIndex = 0;
 static uint8_t m_funcIndex = 0;
+
 dccSTATE dccSE = DCC_LOCO;
 
 
@@ -289,8 +301,6 @@ void dccPacketEngine(void) {
 	if (!DCCpacket.clearToSend) return;
 
 		DCCpacket.clearToSend = false;
-		uint8_t locoForFunction;
-		uint8_t fValue;
 		uint8_t i=0;
 
 
@@ -405,21 +415,21 @@ void dccPacketEngine(void) {
 
 		case DCC_FUNCTION:
 			/*function packets are controlled by funcIndex and transmit at 1/3rd rate of loco*/
-		
-			locoForFunction = m_funcIndex / 3;
+		{//block start
+			uint8_t fValue;
+			uint8_t fLoco = m_funcIndex / 3;
 
-			if (loco[locoForFunction].address != 0) {
-
+			if (loco[fLoco].address != 0) {
 				/*2019-10-08 support long address*/
 				if (loco[m_locoIndex].useLongAddress) {
 					/*long address format S9.2.1 para 60*/
-					DCCpacket.data[0] = loco[locoForFunction].address >> 8;
+					DCCpacket.data[0] = loco[fLoco].address >> 8;
 					DCCpacket.data[0] |= 0b11000000;
-					DCCpacket.data[1] = loco[locoForFunction].address & 0x00FF;
+					DCCpacket.data[1] = loco[fLoco].address & 0x00FF;
 					i = 2;
 				}
 				else {
-					DCCpacket.data[0] = (loco[locoForFunction].address & 0x7F);
+					DCCpacket.data[0] = (loco[fLoco].address & 0x7F);
 					i = 1;
 				}
 
@@ -428,25 +438,25 @@ void dccPacketEngine(void) {
 				switch (m_funcIndex % 3) {
 				case 1:
 					/*send a function group 2 packet S-9.2.1 para 270 101SDDDD*/
-					fValue = (loco[locoForFunction].function >> 5) & 0b1111;
+					fValue = (loco[fLoco].function >> 5) & 0b1111;
 					fValue |= 0b10110000;
 					break;
 				case 2:
 					/*send a function group 3 packet S-9.2.1 para 270 101SDDDD*/
-					fValue = (loco[locoForFunction].function >> 9) & 0b1111;
+					fValue = (loco[fLoco].function >> 9) & 0b1111;
 					fValue |= 0b10100000;
 					break;
 				default:
 					/*send a function group 1 packet S-9.2.1 para 260 100DDDDD*/
 					/*take 5 function bits and move bit 0 to bit 4*/
-					fValue = loco[locoForFunction].function & 0b11111;
+					fValue = loco[fLoco].function & 0b11111;
 					if (fValue & 0x01) { fValue = fValue | 0b100000; }
 					fValue = fValue >> 1;
 					fValue |= 0b10000000;
 				}
 				DCCpacket.data[i] = fValue;
 				i++;
-				
+
 				/*calc checksum and packet length. i points to checksum byte*/
 				DCCpacket.data[i] = 0;
 				for (DCCpacket.packetLen = 0;DCCpacket.packetLen < i;DCCpacket.packetLen++) {
@@ -454,13 +464,14 @@ void dccPacketEngine(void) {
 				}
 				DCCpacket.packetLen++;
 				/*will exit with DCCpacket.packetLen set at correct length of i+1*/
-							   				 			  
+
 			}
 
-			/*increment funcIndex and rollover at 12. Next up is loco packet*/
+			/*increment funcIndex and rollover at 3*max_loco. Next up is loco packet*/
 			++m_funcIndex;
-			if (m_funcIndex >= MAX_LOCO*3) { m_funcIndex = 0; }	
+			if (m_funcIndex >= MAX_LOCO * 3) { m_funcIndex = 0; }
 			dccSE = DCC_LOCO;
+		}//block end
 			break;
 
 		case DCC_POM:
@@ -785,19 +796,24 @@ void dccPacketEngine(void) {
 
 
 		case DCC_ESTOP:
-			/*broadcast an eStop packet, set all locos to zero speed. see S=9.2.1 para 50 and para 100*/
-			/*we should probably repeat this for 10 packets before we go idle*/
+			//broadcast an eStop packet, set all locos to zero speed. see S=9.2.1 para 50 and para 100
 			DCCpacket.longPreamble = false;
 			DCCpacket.data[0] = 0x00;
-			DCCpacket.data[1] = 0x0b01110000;
-			DCCpacket.data[2] = 0x0b01110000;
+			DCCpacket.data[1] = 0b01000001;
+			DCCpacket.data[2] = 0b01000001;
 			DCCpacket.packetLen = 3;
-			
-			for (uint8_t i = 0;i < MAX_LOCO;i++) {
-				loco[i].speed = 0;
-				loco[i].speedStep = 0;
-				//2020-5-25 flag a change so this gets broadcast over all channels
-				loco[i].changeFlag = true;
+
+			//2021-9-1 bug fix
+			//my TCS decoder does not respond to broadcast eStop. my Zen and NCE decoders do
+			//so, send just one eStop broadcast packet and then set all loco slots to eStop 
+			//as belt-and-braces
+			for (auto& loc : loco) {
+				loc.speed = 0;
+				loc.speedStep = 0;
+				//note a non-zero eStopTimer lets the dcc packet engine know to transmit an estop message
+				loc.eStopTimer = LOCO_ESTOP_TIMEOUT;
+				//flag a change so this gets broadcast over all channels
+				loc.changeFlag = true;
 			}
 
 			/*restore any power trip condition*/
@@ -810,8 +826,8 @@ void dccPacketEngine(void) {
 				power.trackPower = true;
 				ina219Mode(true);  //use averaging mode (trip may have been during SM read)
 			}
-
-			dccSE = DCC_IDLE;
+			
+			dccSE = DCC_LOCO;
 			break;
 
 		case DCC_IDLE:
@@ -1308,16 +1324,11 @@ do we really need to return -1 if blocking?  where is this used (e.g. stop speed
 int8_t setLoco(LOCO *loc, int8_t speed, bool dir) {
 	if (loc == nullptr) return -1;
 	trace(Serial.println(F("\nsetLoco\n"));)
-	
-	uint16_t age = 0;
 
 	//estop condition is blocking, meaning no changes to dir or speed
 		if (loc->eStopTimer == 0) {
 			//find max of history
 			
-			for (auto h : loco) {
-				if (h.history > age) { age = h.history; }
-			}
 
 			if (speed > 0) {
 				//incr speed
@@ -1332,6 +1343,7 @@ int8_t setLoco(LOCO *loc, int8_t speed, bool dir) {
 				//estop is -2
 				loc->speed = 0;
 				loc->speedStep = 0;
+				//note a non-zero eStopTimer lets the dcc packet engine know to transmit an estop message
 				loc->eStopTimer = LOCO_ESTOP_TIMEOUT;
 			}
 			else if (speed == -1) {
@@ -1371,7 +1383,9 @@ int8_t setLoco(LOCO *loc, int8_t speed, bool dir) {
 	for (int i = 0;i < MAX_LOCO;++i) {
 		if (&loco[i] == loc) {
 			//increment history provided this was not an estop event
-			if (speed >= -1) { loc->history = ++age; }
+			if (speed >= -1) {
+				incrLocoHistory(loc);
+			}
 			return i; }
 		}
 	return -1;
@@ -1410,19 +1424,6 @@ void changeDigit(char digitASCII,uint8_t digPos,uint16_t *target) {
 	*target = atoi(buffer);
 	}
 
-//2020-12-21 not in use
-/*
-void changeDigitBIN(char digitASCII, uint8_t digPos, uint8_t *target) {
-	//there's no sprintf binary format, but this is easy bit manipulation
-	digPos &= 0x07;  //8 bits max
-	if (digitASCII == '0') {
-		*target &= ~(1 << digPos);
-	}else
-	{
-		*target |= (1 << digPos);
-	}
-}
-*/
 
 
 int8_t setFunctionFromKey(KEYPAD &k) {
@@ -1781,26 +1782,29 @@ void dccGetSettings() {
 		/*need to re-initiatise eeprom with factory defaults*/
 		EEPROM.put(0,defaultController);
 		eeAddr += sizeof(bootController);
+		//2021-10-07 when doing a factory reset, only load loco 3
 		for (int i = 0;i < MAX_LOCO;++i) {
-			loco[i].address = 3 + i;
+			//loco[i].address = (i <MAX_LOCO )? i+3  : 0;
+			loco[i].address = (i ==0) ? i + 3 : 0;
+			loco[i].useLongAddress = false;
 		}
-		/*other settings such as defaults for 28 steps and longAddr are defined in the struct itself*/
+		//other settings such as defaults for 28 steps and longAddr are defined in the struct itself
 		EEPROM.put(eeAddr, loco);
-		/*2020-05-03 also store turnouts*/
+		//2020-05-03 also store turnouts
 		eeAddr += sizeof(loco);
 		EEPROM.put(eeAddr, turnout);
 		EEPROM.commit();
 	}
-	/*either way, now populate our structs with EEprom values*/
+	//Now populate our structs with EEprom values
 	eeAddr = 0;
 	EEPROM.get(eeAddr, bootController);
 	eeAddr += sizeof(bootController);
 	EEPROM.get(eeAddr, loco);
-	/*2020-05-03 also turnouts*/
+	//2020-05-03 also turnouts
 	eeAddr += sizeof(loco);
 	EEPROM.get(eeAddr, turnout);
 	
-	/*Reset certain parameters on every boot*/
+	//Reset certain parameters on every boot
 	for (auto& loc : loco) {
 		loc.speed = 0;
 		loc.speedStep = 0;
@@ -1808,6 +1812,10 @@ void dccGetSettings() {
 		loc.forward = true;
 		loc.jog = false;
 		loc.history = 0;
+	}
+
+	for (auto& t : turnout) {
+		t.thrown = false;
 	}
 
 	
@@ -1820,13 +1828,13 @@ void dccGetSettings() {
 	m_tempLoco.function = 0;
 	unithrottle.digitPos = 0;
 
-	/*restore some system values*/
+	//trace dump the eeprom size used
 	trace(Serial.printf("GETsettings loco %d, turnout %d\r\n", sizeof(loco), sizeof(turnout));)
 	
 
 }
 
-/*would call dccPutSettings if user changes a loco addr, short/long or step-size, or at system level they change current trip*/
+/*Call dccPutSettings if user changes a loco addr, short/long or step-size, or at system level they change current trip*/
 void dccPutSettings() {
 	if (bootController.isDirty == false) { return; }
 	int eeAddr = 0;
@@ -1909,7 +1917,7 @@ void DCCcoreBoot() {
 	lcd.print("ESP2866 DCC\x04\x03");
 	lcd.setCursor(0, 1);
 	/*pull the software version from eeprom*/
-	/*_bootController.softwareVersion is a long representing the date, e.g. 20200503, convert to string and split*/
+	/*_bootController.softwareVersion is a long representing the date, e.g. 20210503, convert to string and split*/
 	char tmp[17];
 	itoa(bootController.softwareVersion, tmp, 10);
 	char out[17];
@@ -1948,32 +1956,32 @@ int8_t DCCcore(void) {
 		DCCpacket.msTickFlag = false;
 		
 	
-		/*scan jogwheel*/
+		//scan jogwheel
 		nsJogWheel::jogWheelScan();
 
-		/*scan I2C keypad*/
+		//scan I2C keypad
 		keyScan();
 
-		/*Scan local estop on D2 */
+		//scan local estop on D2
 		m_eStopDebounce = m_eStopDebounce << 1;
 		if (digitalRead(PIN_ESTOP) == HIGH) { m_eStopDebounce++; }
 
 
-		/*if local Emergency Stop key pressed, emulate an I2C keypad estop*/
+		//if local Emergency Stop key pressed, emulate an I2C keypad estop
 		if ((m_eStopDebounce & 0b111) == 0x00) {
 			keypad.key = KEY_ESTOP;
 			keypad.keyFlag = true;
 			keypad.keyHeld = false;
 		}
 
-		/*process I2C keypad key value if we have one*/
+		//process I2C keypad key value if we have one
 		if (keypad.keyFlag) {
 			keypad.keyFlag = false;
 			
-			/*estop always performs an eStop, and this is how you exit M_TRIP*/
-			/*note that local estop key also performs same function */
-			/*2020-6-14 except when in boot mode.  in which case eStop will set max current at 250mA
-			test first to prevent re-entrant calling of this block*/
+			//estop always performs an eStop, and this is how you exit M_TRIP
+			//note that local estop key also performs same function 
+			//2020-6-14 except when in boot mode.  in which case eStop will set max current at 250mA
+			//test first to prevent re-entrant calling of this block
 			if (keypad.key == KEY_ESTOP) {
 				if (m_machineSE == M_BOOT && bootController.currentLimit != 250) {
 					bootController.currentLimit = 250;
@@ -1996,7 +2004,7 @@ int8_t DCCcore(void) {
 				Serial.println(F("!EMERGENCY STOP!"));
 				m_machineSE = M_ESTOP;
 				m_stateLED = L_ESTOP;
-				/*call out to the e stop routine, will broadcast and estop signal and zero all individual locos*/
+				//call out to the e stop routine, will broadcast and estop signal and zero all individual locos
 				m_generalTimer = 16;
 				dccSE = DCC_ESTOP;
 				r = 127;
@@ -2004,13 +2012,12 @@ int8_t DCCcore(void) {
 			}
 
 
-			/*key related changes to local machine state engine*/
+			//key-press related changes to local machine state engine
 			switch (m_machineSE) {
 				
-
-			case M_UNI_SET:  //APPLES
-				//assigns a new loco or updates an existing one
-			{//scope block M_UNI_SET. to avoid crosses-initialization-error 
+			case M_UNI_SET:
+			//assigns a new loco or updates an existing one
+			{//scope block M_UNI_SET. to avoid crosses-initialization-error in the compiler
 				
 				bool checkAddress = false;
 
@@ -2084,7 +2091,7 @@ int8_t DCCcore(void) {
 						//2021-01-08 at this juncture we overwrite existing slot if appropriate or pick up a zero slot
 						int8_t theSlot = findLoco(buffer, existing);
 						if (theSlot == -1) {
-							//cannot find existing loco or able to create a slot for one
+							//cannot find existing loco nor able to create a slot for one
 							lcd.clear();
 							lcd.print("No slots free");
 							//we need to abandon edit mode and return to active loco
@@ -2125,7 +2132,8 @@ int8_t DCCcore(void) {
 								//write back to eeprom
 								bootController.isDirty = true;  //pending write
 								bootController.flagLocoRoster = true;
-
+								//2021-09-01 increment age
+								incrLocoHistory(&loco[theSlot]);
 							}
 							else {
 								//overwrite slot details, we are either writing to a blank slot or overwriting one
@@ -2136,6 +2144,8 @@ int8_t DCCcore(void) {
 								loco[theSlot].speed = 0;
 								loco[theSlot].speedStep = 0;
 								loco[theSlot].function = 0;
+								//2021-09-01 increment age
+								incrLocoHistory(&loco[theSlot]);
 
 								trace(Serial.printf("overwrt %d\n", loco[theSlot].address);)
 								//write to eeprom
@@ -2155,7 +2165,7 @@ int8_t DCCcore(void) {
 						trace(Serial.printf("UNI write to slot %d", theSlot);)
 						
 
-					}//scope block 2
+					}//end of scope block 2
 
 					break;
 
@@ -2254,31 +2264,22 @@ int8_t DCCcore(void) {
 					}
 				}
 
-			}//scope block M_UNI_SET
+			}//end of scope block M_UNI_SET
 			break;
 
 
-			case M_UNI_RUN:   //ORANGES
-
-				/*2020-10-07 notused
-				if (keypad.key == KEY_MODE) {
-					m_machineSE = M_TURNOUT;
-					updateTurnoutDisplay();
-					break;
-				}
-				*/
-
-				//2020-10-07 long-mode takes us to M_POM, short to M_TURNOUT
+			case M_UNI_RUN: 
+				//2020-10-07 long-mode-press takes us to M_POM, short to M_TURNOUT
 
 				if (keypad.key == 0) {
-					//had requested keyup, here it is, this was a short-mode press, go to turnout
+					//had requested keyup, here it is, this was a short-mode-press, go to turnout
 					m_machineSE = M_TURNOUT;
 					updateTurnoutDisplay();
 					break;
 				}
 
 				if (keypad.key == KEY_MODE) {
-					/*need to wait and see key-held, which will take us to POM*/
+					//need to wait and see key-held, which will take us to POM
 					keypad.requestKeyUp = true;
 					if (keypad.keyHeld) {
 						m_machineSE = M_POM;
@@ -2335,7 +2336,7 @@ int8_t DCCcore(void) {
 					updateUNIdisplay();
 					//exit with unithrottle.locPtr pointing at an editor object
 
-				}//scope block
+				}//end scope block
 				break;
 
 				case 'B':		
@@ -2378,7 +2379,7 @@ int8_t DCCcore(void) {
 					//is deal with by the M_UNI_RUN entry point
 
 
-				}//scope block ADVANCE
+				}//end scope block ADVANCE
 				break;
 
 				case 'C':
@@ -2460,15 +2461,11 @@ int8_t DCCcore(void) {
 			case M_TURNOUT:
 				if (keypad.keyHeld) { break; }
 				if (keypad.key == KEY_MODE) {
-					/* 2020-10-07 no longer go to M_operate
-					m_machineSE = M_OPERATE;
-					updateLocoDisplay();
-					*/
 					m_machineSE = M_UNI_RUN;
 					updateUNIdisplay();
 				}  //mode
 				else {
-					/*pass keypad by pointer as function will modify it
+					/*pass keypad by pointer as the function will modify it
 					 *the turnout index returned needs to have an offset of 31 added*/
 					r = setTurnoutFromKey(keypad);
 					/*only add the index if return value is +ve*/
@@ -2482,56 +2479,48 @@ int8_t DCCcore(void) {
 				if (keypad.key == KEY_MODE) {
 					dccSE = DCC_LOCO;  //return to loco packet transmission
 
-					/* 2020-10-07 no longer go to M_operate
-					m_machineSE = M_OPERATE;
-					updateLocoDisplay();
-					*/
 					m_machineSE = M_UNI_RUN;
 					updateUNIdisplay();
 					} 
 				else {
-					//setCvFromKey(keypad);
-					/*2019-11-25*/
-					/*2019-12-02 ok problem with verify is that we kick off ACK monitor but then burn up
-					cycles with update cvDisplay.  so have setCVfromKey return bool and only update if true*/
-					if (setCVfromKey()) {
-						updateCvDisplay();
-					}
+					/*2019-12-02 fix to problem with CV-verify. we kick off ACK monitor but then burn up
+					cycles with update cvDisplay.  so fix is have setCVfromKey return bool and only update if true*/
+					if (setCVfromKey()) updateCvDisplay();
 				}
 				break;
 
 			case M_ESTOP:
-				/*2019-11-18 if mode-short then enter CV service mode, if mode-long then enter Power settings*/
-				/*key-release (i.e. less than Mode-hold-period) will take us to Service Mode*/
+				//2019-11-18 if mode-short then enter CV service mode, if mode-long then enter Power settings
+				//key-release (i.e. less than Mode-hold-period) will take us to Service Mode
 				if (keypad.key == 0) {
-					/*cv control is entered whilst eStop active*/
+					//cv control is entered whilst eStop active
 					m_machineSE = M_SERVICE;
 					m_stateLED = L_SERVICE;
 					updateCvDisplay();
 					break;
 				}
 
-				/*if mode key, request a key-up event, trigger POWER if its held*/		   				 
+				//if mode key, request a key-up event, trigger POWER if its held		   				 
 				if (keypad.key == KEY_MODE) {
-					/*need to wait and see key-held, which will take us to Power settings, otherwise go to Service Mode*/
+					//need to wait and see key-held, which will take us to Power settings, otherwise go to Service Mode
 					keypad.requestKeyUp = true;
 					if (keypad.keyHeld) {
 						m_machineSE = M_POWER;
 						updatePowerDisplay();
 					}
 				}
-				/*any other key is ignored, instead we rely on eStop timeout to revert us to ops mode*/
+				//any other key is ignored, instead we rely on eStop timeout to revert us to ops mode
 				break;
 
 			case M_POWER:
-				/*exit with mode button, we arrived here because of mode-held so ignore this*/
+				//exit with mode button, we arrived here because of mode-held so ignore this
 				if (keypad.keyHeld) { break; }
 				if (keypad.key == KEY_MODE) {
 					
 					m_machineSE = M_UNI_RUN;
 					updateUNIdisplay();
 
-					/*write pending eeprom changes*/
+					//write pending eeprom changes
 					dccPutSettings();
 					dccSE = DCC_LOCO;  //return to loco packet transmission
 				}  //mode
@@ -2542,14 +2531,10 @@ int8_t DCCcore(void) {
 				break;
 
 			case M_POM:
-				/*exit with mode button, we arrived here because of mode-held so ignore this*/
+				//exit with mode button, we arrived here because of mode-held so ignore this
 				if (keypad.keyHeld) { break; }
 				if (keypad.key == KEY_MODE) {
 					dccSE = DCC_LOCO;  //return to loco packet transmission
-					/*2020-10-07 revert to M_UNI_RUN
-					m_machineSE = M_OPERATE;
-					updateLocoDisplay();
-					*/
 					m_machineSE = M_UNI_RUN;
 					updateUNIdisplay();
 				}  
@@ -2563,10 +2548,10 @@ int8_t DCCcore(void) {
 
 		}//end keyflag
 
-		/*deal with jogwheel*/
-		/*2019-10-10 check jogwheel activity*/
+		
+		//2019-10-10 check jogwheel activity
 		if (jogWheel.jogEvent || jogWheel.jogButtonEvent) {
-			/*jogwheel related changes to local machine state engine*/
+			//jogwheel related changes to local machine state engine
 			switch (m_machineSE) {
 			case M_UNI_RUN:
 				m_generalTimer = 10;
@@ -2578,20 +2563,20 @@ int8_t DCCcore(void) {
 								
 				r = setLocoFromJog(jogWheel);
 
-				/*2020-05-03 flag a change for broadcasting, UI update to follow*/
+				//2020-05-03 flag a change for broadcasting, UI update to follow
 				if (r >= 0) { 
 					loco[r].changeFlag = true;
-					/*modifying a single loco that is in a WiThrottle consist is handled here*/
+					//modifying a single loco that is in a WiThrottle consist is handled here
 					replicateAcrossConsist(r);
 				}
 			}
 
 		}
 
-		/*2019-11-15 deal with jog button pushes. These apply the brake/not if pushed/not*/
-		/*potentially a long-push could reverse direction or apply a nudge*/
+		//2019-11-15 deal with jog button pushes. These apply the brake/not if pushed/not
+		//potentially a long-push could reverse direction or apply a nudge
 		switch (m_machineSE) {
-			/*only act if we are in loco operate mode, don't need to consider the button event status*/
+			///only act if we are in loco operate mode, don't need to consider the button event status
 		
 			case M_TURNOUT:  //added 2020-10-07
 			case M_UNI_RUN:
@@ -2601,28 +2586,28 @@ int8_t DCCcore(void) {
 		}
 
 
-			 /*deal with all 250mS event counters here*/
+		//deal with all 250mS event counters here
 		++m_tick;
 		if (m_tick >= 25) {
-			/*count down any open eStop timers, and the generalTimer */
+			//count down any open eStop timers and the generalTimer
 			m_tick = 0;
 			quarterSecFlag = true;
 			for (auto& loc : loco) {
 				loc.eStopTimer -= loc.eStopTimer == 0 ? 0 : 1;
 			}
 			
-			/*countdown cv timeout. repaint display as we hit zero*/
+			//countdown cv timeout. repaint display as we hit zero
 			if (m_cv.timeout > 0) {
 				m_cv.timeout--;
 				if (m_cv.timeout == 0) { updateCvDisplay(); }
 			}
-			/*countdown pom timeout. repaint display as we hit zero*/
+			//countdown POM timeout. repaint display as we hit zero
 			if (m_pom.timeout > 0) {
 				m_pom.timeout--;
 				if (m_pom.timeout == 0) { updatePOMdisplay(); }
 			}
 
-			/*handle LED display state*/
+			//handle LED display state
 			++m_ledCount;
 			if (m_ledCount >= 8) { m_ledCount = 0; }
 			if ((m_stateLED & (1 << m_ledCount)) == 0) { 
@@ -2633,7 +2618,7 @@ int8_t DCCcore(void) {
 			}
 
 
-			/*timer event driven machine state*/
+			//timer event driven machine state
 			if (m_generalTimer > 0) {
 				m_generalTimer--;
 			
@@ -2641,8 +2626,7 @@ int8_t DCCcore(void) {
 				{//hit zero
 					switch (m_machineSE) {
 					case M_BOOT:
-						//power.currentQuiescent = power.currentResult;
-						/*enable track power, then measure quiescent current*/
+						//enable track power, then measure quiescent current
 						trace(Serial.println(F("enable power"));)
 						digitalWrite(PIN_POWER, POWER_ON);
 						power.trackPower = true;
@@ -2689,13 +2673,19 @@ int8_t DCCcore(void) {
 		
 		//still within the 10mS tick calls
 		if (power.trip == false) {
-				/*implement a rolling average weighing of 0.2, this gives 90% of final value in 10 samples
-				i.e. a 100mS response to overloads*/
-				
-				power.bus_volts = (ina219.getBusVoltage_V()*0.2) + 0.8*power.bus_volts;
-				power.bus_mA = (ina219.getCurrent_mA()*0.2) + 0.8*power.bus_mA;
+			/*implement a rolling average weighing of 0.2, this gives 90% of final value in 10 samples
+			i.e. a 100mS response to overloads*/					
+			
+			power.bus_volts = ina219.getBusVoltage_V();
+			//2021-02-18 use an exponential average for current monitoring.  The L298 and IBT2 do cause a trip without 
+			//exponential smoothing just on a INA average reading, however the LMD18200 does not cause a trip.
+			//Its short-protection feature seems to act very quickly and limit the current to about 1.5A which sustains
+			//the short and won't trigger a 2A trip.
+			//If we apply exponential smoothing, the 2A overload is correctly captured, which is counter intuitive.
+			power.bus_mA = (ina219.getCurrent_mA()*0.2) + 0.8*power.bus_mA;
 
-				if (power.bus_mA < power.quiescent_mA) { power.quiescent_mA = power.bus_mA; }
+
+			if (power.bus_mA < power.quiescent_mA) { power.quiescent_mA = power.bus_mA; }
 				
 			//Power trip condition present?
 			if (power.serviceMode) {
@@ -2710,14 +2700,14 @@ int8_t DCCcore(void) {
 					power.trip = true;
 			}
 
-			//look for voltage overages
+			//look for over-voltage condition
 			if (power.bus_volts > bootController.voltageLimit) {
 				Serial.print(F("Voltage trip "));
 				power.trip = true;
 			}
 
 
-		}   //end
+		}   //end of power trip monitoring
 
 		
 		
@@ -2733,17 +2723,12 @@ int8_t DCCcore(void) {
 		}
 
 
-		/*sample the ESP analogue system. This is not reliable, following is test code*/
-		/*implemented as an averaged sample*/
-		
-		//2021-01-03 disable analogue measurement, was not accurate 
-		//power.sampleReg += analogRead(A0);
-		//power.ADresult = int(power.ADresult*0.8 + 0.2*analogRead(A0));
-		
-		++power.sampleCount;
+		//2021-01-03 disable analogue power measurement, was not accurate.  Possibly due to Wifi
+		//system causing too much noise in the measurements
+		//line below left in as test code
+		power.ADresult = int(power.ADresult*0.8 + 0.2*analogRead(A0));
 
-
-	}//end msTickFlag
+	}//end msTickFlag, 10mS
 
 
 	//Code below is run on every call to DCCcore.
@@ -2761,12 +2746,14 @@ void ina219Mode(boolean Avg) {
 			INA219_CONFIG_GAIN_8_320MV | INA219_CONFIG_BADCRES_12BIT |
 			INA219_CONFIG_SADCRES_12BIT_16S_8510US |
 			INA219_CONFIG_MODE_SANDBVOLT_CONTINUOUS;
+
+			//INA219_CONFIG_SADCRES_12BIT_8S_4260US
 	}
 	else
-	{	//we will use one time trigger mode, setting 68mS with 128 samples, shunt only.
+	{	//For Service Mode ACK detection. Use one time trigger mode, setting 68mS with 128 samples, shunt only.
 		//assuming this is triggered at about the time we expect to see ACK, then if half the samples see 55mA+
 		//then the measured avg current should be >27mA.
-		//The moment we write this mode, is the moment it is triggered, even if we re-write the same mode
+		//The moment we write this mode is the moment it is triggered, even if we re-write the same mode
 
 		config = INA219_CONFIG_BVOLTAGERANGE_32V |
 			INA219_CONFIG_GAIN_8_320MV | INA219_CONFIG_BADCRES_12BIT |
@@ -3117,7 +3104,10 @@ bool writeServiceCommand(uint16_t cvReg, uint8_t cvVal, bool verify, bool enterS
 }
 
 
-
+//address is a string such as L123 or S3 holding the loco address
+//slotAddress is a pointer to the targetted loco[] slot
+//ignoreEmpty will not attempt to bump a slot
+//the routine is passive, it does not actually overwrite any slot
 //2021-2-4 merge and refactor from wiT
 int8_t findLoco(char *address, char *slotAddress, bool ignoreEmpty) {
 	bool useLong = (address[0] == 'L') ? true : false;
@@ -3127,8 +3117,8 @@ int8_t findLoco(char *address, char *slotAddress, bool ignoreEmpty) {
 
 	int8_t i;
 	char buf[8];
-	trace(Serial.printf("findLoco address=%s S/L=%d\n", address,useLong);)
-	strcpy(buf, address + 1);
+	trace(Serial.printf("findLoc addr=%s S/L=%d\n", address,useLong);)
+	strcpy(buf, address + 1);  //ignore leading S/L on the address
 
 	//do not match a zero address
 	//Refactor: WiT did not check for zero address, but it never expected to receive one
@@ -3141,7 +3131,7 @@ int8_t findLoco(char *address, char *slotAddress, bool ignoreEmpty) {
 			if (slotAddress != NULL) {
 				sprintf(slotAddress, "S%d", loco[i].address);
 				if (loco[i].useLongAddress) slotAddress[0] = 'L';
-				trace(Serial.println("#1");)
+				trace(Serial.println("fL1");)
 			}
 			return i;
 		}
@@ -3149,20 +3139,20 @@ int8_t findLoco(char *address, char *slotAddress, bool ignoreEmpty) {
 
 	//2021-01-08 if looking for a match only, then exit now, ignoring zero slots
 	if (ignoreEmpty) return -1;
-	
+	trace(Serial.println("fL2");)
+
 	//or take an empty slot
 	for (i = 0;i < MAX_LOCO;i++) {
 		if (loco[i].address == 0) {
-			//2021-1-8 indicate slotAddress as null string
-			/*copy desired address to slotAddress*/
-			memset(slotAddress, '\0', sizeof(slotAddress));
+			//2021-10-02 zero-slot bug fix. Don't attempt to write to slotAddress if it is null
+			//otherwise, copy address to slotAddress
 			trace(Serial.println("#2");)
-			//refactor: WiT would copy desired address to slotAddress
-			//	if (slotAddress != NULL) strcpy(slotAddress, address);
-				return i;
+			if (slotAddress != NULL) strcpy(slotAddress, address);
+			return i;
 		}
 	}
 
+	trace(Serial.println("fL3");)
 	//refactor: bump logic carried from WiT
 	//2020-11-25 new slot bump logic, look for oldest stationary loco that has no consistID
 	int8_t bump = -1;
@@ -3170,8 +3160,11 @@ int8_t findLoco(char *address, char *slotAddress, bool ignoreEmpty) {
 
 	for (i = 0;i < MAX_LOCO;i++) {
 		if ((loco[i].speed == 0) && (loco[i].consistID == 0)) {
-			//possible bump candidate, but check its the oldest
-			if (loco[i].history < age) 	bump = i;
+			//possible bump candidate, but check its the oldest, i.e. lowest history value
+			if (loco[i].history < age) {
+				bump = i;
+				age = loco[i].history;
+			}
 		}
 	}
 
@@ -3226,3 +3219,13 @@ LOCO * getNextLoco(LOCO *loc) {
 }
 
 
+//increase the history of this loc in the loco[] array
+//2020-09-01
+void incrLocoHistory(LOCO *loc) {
+	uint16_t age = 0;
+	for (auto h : loco) {
+		if (h.history > age) { age = h.history; }
+	}
+	age++;
+	loc->history = age;
+}

@@ -4,7 +4,6 @@
 
 #include "DCCweb.h"
 #include "DCCcore.h"
-//#include "JsonThrottle.h"
 #include "WiThrottle.h"
 
 /*
@@ -13,11 +12,6 @@
 2020-11-30 this module handles all HTTP and Websocket connectivity.  HTTP is used to serve a static web page 
 and then websockets are used for interaction on that page.  The websocket here is also used to support 
 the JSON Throttle aka DigiTrains, if used.
-
-
-
-2021-1-27 the websocket server starts, but refuses to connect.  this is a new bug.  dunno why its happening
-or when it started exactly.
 
 
 see https://github.com/bblanchon/ArduinoJson
@@ -85,6 +79,7 @@ void getHardware() {
 	out["quiescent"] = power.quiescent_mA;
 	out["busmA"] = power.bus_mA;
 	out["base"] = power.ackBase_mA;
+	out["AD"] = power.ADresult;
 	out["heap"] = ESP.getFreeHeap();
 
 	trace(out.printTo(Serial);) 
@@ -206,9 +201,13 @@ void nsDCCweb::webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, siz
 }//end websocket event
 
 void nsDCCweb::sendJson(JsonObject& out) {
-	//We can avoid a String class, but need to guesstimate a useful buffer size
-	char payload[600];
+	//char* jsonChar;   //this will not work, its a pointer to an as yet undefined buffer
 	//out.printTo((char*)jsonChar, out.measureLength() + 1);
+
+	
+	//We can avoid a String class, but need to guesstimate a useful buffer size
+	//2021-10-07 payload increased to 800 bytes to support max loco=8
+	char payload[800];
 	out.printTo(payload, sizeof(payload)); //if you want to be more explicit to avoid buffer overun
 	webSocket->broadcastTXT(payload);
 	if (sizeof(payload) < out.measureLength()) {
@@ -457,7 +456,16 @@ void nsDCCweb::DCCwebWS(JsonObject& root) {
 
 						int addr = atoi(array[i]["address"]);
 						if (addr == 0) {
-							//clear the slot
+							//2021-10-02 don't allow the one remaining slot to be deleted. we must always have at least
+							//one loco in the DSKY.  Also what if the DSKY was pointed at slot 2 and that is now deleted?
+							//if it defaults to slot 0, will that be available?  maybe we just never allow deletion of slot zero
+							int8_t activeSlots = 0;
+							for (auto loc : loco) {
+								if (loc.address != 0) activeSlots++;
+							}
+							//exit if this is the last active slot
+							if (activeSlots == 1) continue;
+							//otherwise clear the slot
 							loco[i].address = 0;
 							loco[i].forward = true;
 							loco[i].use128 = false;
