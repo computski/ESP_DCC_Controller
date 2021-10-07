@@ -1,10 +1,12 @@
 # ESP_DCC_Controller
-DCC controller based on nodeMCU ESP12-E module for model railroad control.  This is an ESP8266 device, not an ESP32.
+DCC controller based on nodeMCU ESP12-E module for model railroad control.  This is an ESP8266 device (ESP12), not an ESP32.
 
 Implements a DCC controller and JRMI server which supports mobile clients running EngineDriver (android) or WiThrottle (IOS). To allow a lower cost build, it is not necessary to fit the optional 4 x 4 keypad matrix, Jogwheel and 1602 LCD display.
 
 Generates a DCC signal as a low level routine.  This is fed with DCC packets from higher level routines which handle keyboard/display
 and communications over TCP with the JRMI throttles (on mobile phones).
+
+Current monitoring and saftey trip is supported via a INA219 current monitor.
 
 The system also supports a web interface giving a means to control the current and voltage safety trip levels, as well as parameters such
 as SSID and IP address.  The web interface also supports editing of locomotive and turnout rosters - these can also be modified via the
