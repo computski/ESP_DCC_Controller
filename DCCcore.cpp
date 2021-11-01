@@ -22,15 +22,6 @@ its defined in Global.h hardware section
 */
 
 
-//2021-09-12 new bug. If there is a current trip, Estop no longer clears it.  nor does toggling power
-//on withrottle.  suspect its re-triggering. i did modify the timeout-go-to-dccLoco state thing.
-//case M_ESTOP: in dccCore. but i think there is more to it.  DCCweb will set power.trip=false
-//but it retriggers after a second - so i suspect the trip value held on display is retriggering
-		
-
-
-//2021-09-13 setting a turnout address on the dsky does not immediately allow toggling via # key
-//also am thinking perhaps abcd should allow direct addressing into a slot with eeprom write
 
 BOOTUP_LCD
 
@@ -252,7 +243,7 @@ void debugPacket(void) {
 
 
 float getVolt() {
-	//debug, for some reason 12v reads as 8
+	//debug
 	return ina219.getBusVoltage_V();
 }
 /*END DEBUG ROUTINES*/
@@ -296,16 +287,17 @@ void dccPacketEngine(void) {
 	 *note need to add funcIndex and run this thro 0-11 for 4loco x 3 func groups
 	 *int(funcIndex/3) to point to Loco[] and then mod 3 for the group itself
 	*/
-
+	
 
 	if (!DCCpacket.clearToSend) return;
 
 		DCCpacket.clearToSend = false;
 		uint8_t i=0;
 
+		//2021-10-14 enable/disable of track power is now controlled from DCClayer1
+		DCCpacket.trackPower = power.trackPower;
 
 		switch (dccSE) {
-
 
 		case DCC_LOCO:
 			power.serviceMode = false;
@@ -820,9 +812,9 @@ void dccPacketEngine(void) {
 			/*2020-03-29 restore power if it was turned off remotely*/
 
 			if (power.trip || !power.trackPower) {
-				power.bus_mA = 50;  //emulate 50mA to avoid retriggering a trip from held value
+				power.bus_mA = 50;  //emulate 50mA and 5v to avoid retriggering a trip from held value
+				power.bus_volts = 5;			
 				power.trip = false;
-				digitalWrite(2, POWER_ON); //turn on track power
 				power.trackPower = true;
 				ina219Mode(true);  //use averaging mode (trip may have been during SM read)
 			}
@@ -1527,7 +1519,6 @@ void updatePOMdisplay() {
 
 
 //2020-05-23 rewrite to use cstring
-//2021-01-05 fixed bug .voltageLimit needed not .currentLimit
 void updatePowerDisplay() {
 	lcd.noBlink();
 	lcd.home();
@@ -1574,7 +1565,13 @@ void updateUNIdisplay() {
 
 	//one sec toggle alt display
 		if (power.trip) {
-			sprintf(buffer, "TRIP      %04dmA", (int)power.bus_mA);
+			//2021-10-22 overcurrent or overvolt trip?
+			if (power.bus_mA >= bootController.currentLimit) {
+				sprintf(buffer, "TRIP      %04dmA", (int)power.bus_mA);
+			}
+			else {
+				sprintf(buffer, "TRIP         %02dV", (int)power.bus_volts);
+			}
 		}
 		else if (power.trackPower == false) {
 			strcpy(buffer, "TRACK POWER OFF ");
@@ -1850,12 +1847,12 @@ void dccPutSettings() {
 
 
 void DCCcoreBoot() {
-	/*LED and local estop button*/
-	pinMode(PIN_HEARTBEAT, OUTPUT); //D0 with led
-	pinMode(PIN_ESTOP, INPUT_PULLUP); //D3 pull low to signal Emergency Stop
-	/*power enable pin*/
-	pinMode(PIN_POWER, OUTPUT); //D2 power enable
-	digitalWrite(PIN_POWER, POWER_OFF); //disable on boot
+	//LED and local estop button
+	pinMode(PIN_HEARTBEAT, OUTPUT); 
+#ifdef PIN_ESTOP
+		pinMode(PIN_ESTOP, INPUT_PULLUP); //pull low to signal Emergency Stop
+#endif	
+
 	power.trackPower = false;
 
 	/*LCD initialise block*/
@@ -1962,10 +1959,14 @@ int8_t DCCcore(void) {
 		//scan I2C keypad
 		keyScan();
 
-		//scan local estop on D2
+		//scan local estop button if present. we shift in a zero, then read the estop pin
 		m_eStopDebounce = m_eStopDebounce << 1;
+#ifdef PIN_ESTOP
 		if (digitalRead(PIN_ESTOP) == HIGH) { m_eStopDebounce++; }
-
+#else
+		//Estop button not implemented. Emulate a high reading
+		m_eStopDebounce++;
+#endif
 
 		//if local Emergency Stop key pressed, emulate an I2C keypad estop
 		if ((m_eStopDebounce & 0b111) == 0x00) {
@@ -2628,11 +2629,12 @@ int8_t DCCcore(void) {
 					case M_BOOT:
 						//enable track power, then measure quiescent current
 						trace(Serial.println(F("enable power"));)
-						digitalWrite(PIN_POWER, POWER_ON);
 						power.trackPower = true;
 						//assume quiescent power is say 250mA,this gets adjusted downward as the unit sees
 						//real readings come in
 						power.quiescent_mA = 250;
+						//2021-10-22 clear bus_volts
+						power.bus_volts = 0; 
 						
 						///2020-10-07 we boot in M_UNI_RUN
 						m_machineSE = M_UNI_RUN;
@@ -2669,7 +2671,7 @@ int8_t DCCcore(void) {
 		if bus_volts==32 the INA is not present and we revert to the AD converter readings*/
 
 		 /*NOTE: to reset a power trip, press ESTOP, it will clear the trip on exit
-			alternatively cycle power through JSON*/
+			alternatively cycle power through JSON WiThrottle*/
 		
 		//still within the 10mS tick calls
 		if (power.trip == false) {
@@ -2691,20 +2693,28 @@ int8_t DCCcore(void) {
 			if (power.serviceMode) {
 				if (power.bus_mA - power.quiescent_mA > 250) { 
 					Serial.print(F("Service Mode power trip "));
-					power.trip = true; }
+					power.trip = true; 
+				}
 			}
 			else if (power.bus_mA > bootController.currentLimit) {  
-					Serial.print(F("Power trip "));
+					Serial.print(F("Current trip "));
 					Serial.println(power.bus_mA, DEC);
 					Serial.println(ina219.getCurrent_mA(), DEC);
-					power.trip = true;
-			}
+					power.trip = true;  
+				}
 
 			//look for over-voltage condition
 			if (power.bus_volts > bootController.voltageLimit) {
 				Serial.print(F("Voltage trip "));
-				power.trip = true;
+				power.trip = true; 
 			}
+
+
+			//2021-10-12 did we just trip the power? If so, broadcast this to the WiThrottles
+			#ifdef _WITHROTTLE_h
+			if (power.trip)	nsWiThrottle::broadcastPower();
+			#endif
+
 
 
 		}   //end of power trip monitoring
@@ -2714,14 +2724,6 @@ int8_t DCCcore(void) {
 		//2020-12-18 power.trip and trackpower flags reworked to allow trackPower flag to 
 		//control the power rather than it being a passive indicator flag
 		if (power.trip) power.trackPower = false;
-		
-		if (power.trackPower) {
-			digitalWrite(PIN_POWER, POWER_ON);
-		}
-		else {
-			digitalWrite(PIN_POWER, POWER_OFF);
-		}
-
 
 		//2021-01-03 disable analogue power measurement, was not accurate.  Possibly due to Wifi
 		//system causing too much noise in the measurements

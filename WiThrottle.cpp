@@ -15,9 +15,6 @@ https://www.jmri.org/help/en/package/jmri/jmrit/withrottle/Protocol.shtml
  vector message queue implementing std::string.  This will avoid memory leaks and allow variable length
  messages compared to using char arrays.  vector.clear() will not clean up the memory that the pointers reference.
 
- 2021-09-09 hit a bug with MAX_LOCO=8, seems that sendLoco() will not send entire loco roster correctly
- and truncates at 599 bytes.  Is there a finite string length on ESP8266?
-
 
  Modue supports the following EngineDriver/WiThrottle features;
  loco roster
@@ -399,8 +396,7 @@ void nsWiThrottle::sendToClient(char *data, AsyncClient *client) {
 	}
 }
 
-/*send data to a specific client, or all if client=nullptr. overload takes std::string*/
-//2021-09-09 bug, if MAX_LOCO=8 we seem to run out of buffer at 599 chars when transmitting the entire loco roster
+//send data to a specific client, or all if client=nullptr. overload takes std::string
 //std::string::max_size() will tell you the theoretical limit imposed by the architecture your program is running under. 
 //internet says ESP will truncate at Ethernet frame buffer len of 1500 bytes
 void nsWiThrottle::sendToClient(std::string s, AsyncClient *client) {
@@ -858,15 +854,21 @@ bool nsWiThrottle::checkDoSteal(char *address, bool checkOnly, bool &isConsist) 
 void nsWiThrottle::setPower(bool powerOn) {
 	if (powerOn) {
 		/*turn on track power*/
-		digitalWrite(PIN_POWER, POWER_ON);
 		power.trackPower = true;
 		power.trip = false;
+		//2021-10-27 also zero all loco speeds in anticipation of power being restored
+		//broadcasting of this is dealt with elsewhere
+		for (auto &loc : loco) {
+			loc.speed = 0;
+			loc.speedStep = 0;
+			loc.changeFlag = true;
+		}
 	}
 	else {
 		/*turn off track power*/
-		digitalWrite(PIN_POWER, POWER_OFF);
 		power.trackPower = false;
 		power.trip = false;
+		
 	}
 	nsWiThrottle::broadcastPower();
 }

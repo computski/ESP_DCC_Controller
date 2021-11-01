@@ -44,20 +44,34 @@
 uint16_t secCount;
 bool    bLED;
 
-/*DCC signal will appear on gpio12, which is D6*/
-uint32 io_info[3] = { PERIPHS_IO_MUX_MTDI_U,  FUNC_GPIO12, 12 }; //primary on GPIO12 D6
-uint32 io_infoA[3] = { PERIPHS_IO_MUX_MTDI_U,  FUNC_GPIO14, 14}; //primary on GPIO14 D5
-
 
 void setup() {
   	Serial.begin(115200);
 	Serial.println(F("\n\nBoot DCC ESP"));
 	trace(Serial.println(F("trace enabled"));)
-	/*drive one output and a second in anti-phase*/
-	dcc_init(io_info, 0);
-	dcc_init(io_infoA, 1);
+	
+//2021-10-19 the unit can operate in DCC mode, or in DC mode pwm which supports a single loco, loco 3 with 28 speed steps
+//enable or disable the DC block as required in Global.h  DCC and DC are mutually exclusive
 
+		#ifdef	DC_PINS
+		//If DC_PINS is defined, this overrides DCC and we will create a DC system.  Entirel optional. If you want 
+		//a DCC system, then comment out or delete the DC_PINS definition in Global.h for the board you are using
+		DC_PINS
+		dc_init(pwm_info, dir_info);
+		dc_init(pwm_infoA, dir_infoA);
+		
+		#elif defined DCC_PINS
+		//we expect to find DCC_PINS defined
+		DCC_PINS
+		dcc_init(dcc_info, enable_info);
+		dcc_init(dcc_infoA, enable_infoA);
+		#else
+		//need to define at least DCC_PINS, else we throw a compile time error.
+		#error "DCC_PINS or DC_PINS must be defined.  Neither is."
+		#endif
+	
 	DCCcoreBoot();
+
 	//restore settings from EEPROM
 	dccGetSettings();
 
@@ -119,9 +133,6 @@ void setup() {
 
 
 
-char debugS;
-int8_t debugThing = 0;
-
 void loop() {
 
 #ifdef _DCCWEB_h
@@ -146,19 +157,9 @@ void loop() {
 		//broadcast turnout changes to line and clear the flags
 		updateLocalMachine();
 		
-		//call DCCdore once per loop. We no longer use the return value
+		//call DCCcore once per loop. We no longer use the return value
 		DCCcore();
 		
-
-		//serial debug
-		if (Serial.available() > 0) {
-			debugS = Serial.read();
-			if (debugS == 'j') {
-				Serial.println(F("debug triggered"));
-				loco[0].debug = true;
-			}
-		}
-
 
 	if (quarterSecFlag) {
 		/*isQuarterSecFlag will return true and also clear the flag*/

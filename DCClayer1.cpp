@@ -8,9 +8,6 @@
 The routine also sets a msTickFlag every 10mS which the main loop can use for general timing such as
 keyboard scans.
 
-
-
-
 Note: using non PWM compat mode, the timebase is 200nS.
 */
 
@@ -86,30 +83,28 @@ Note: using non PWM compat mode, the timebase is 200nS.
 	};
 	static struct timer_regs* timer = (struct timer_regs*)(0x60000600);
 
-	// 3-tuples of MUX_REGISTER, MUX_VALUE and GPIO number
-	typedef uint32_t(pin_info_type)[3];
+	volatile DCCBUFFER DCCpacket;  //externally visible
+	volatile DCCBUFFER _TXbuffer;   //internal to this module
 
+	
 	static uint16_t dcc_mask = 0;
 	static uint16_t dcc_maskInverse = 0;
+	static uint16_t enable_mask = 0;
+	static uint16_t enable_maskInverse = 0;
 
 	static uint8_t  dccCount;
 
 	enum DCCbit { DCC_ONE_H, DCC_ONE_L, DCC_ZERO_H, DCC_ZERO_L, TEST_H, TEST_L };
 	static enum DCCbit DCCperiod = DCC_ONE_H;
 
-
-
-	volatile DCCBUFFER DCCpacket;  //externally visible
-	volatile DCCBUFFER _TXbuffer;   //internal to this module
-
-
+	
 	//DCC layer 1 
 	volatile uint8_t  TXbyteCount;
 	volatile uint8_t  TXbitCount;
 
 
 
-	/*Interrupt handler
+	/*Interrupt handler ffor dcc
 	  for a dcc_zero or dcc_one the reload periods are different.  We queue up the next-bit in the second half of the bit currently being transmitted
 	  Some jitter is inevitable with maskable Ints, but it does not cause any problems with decooding in the locos at present.
 	  The handler will work its way through the TXbuffer transmitting each byte.  when it reaches the end, it sets the byte pointer to zero
@@ -121,9 +116,9 @@ Note: using non PWM compat mode, the timebase is 200nS.
 	*/
 
 
-	static void ICACHE_RAM_ATTR pwm_intr_handler(void) {
+	static void ICACHE_RAM_ATTR dcc_intr_handler(void) {
 
-		/*set the period based on the bit-type we queued up in the last int*/
+		/*set the period based on the bit-type we queued up in the last interrupt*/
 
 		switch (DCCperiod) {
 		case DCC_ZERO_H:
@@ -227,16 +222,19 @@ Note: using non PWM compat mode, the timebase is 200nS.
 			TXbitCount--;
 		}
 		/*ten millisecond flag.  DCC zeros have twice the period length hence the count is doubled for these*/
-		dccCount++;
-		if (dccCount >= ticksMS) {
+		if (++dccCount >= ticksMS) {
 			dccCount = 0;
 			DCCpacket.msTickFlag = true;
+			gpio->out_w1ts = DCCpacket.trackPower ? enable_mask:enable_maskInverse;
+			gpio->out_w1tc = DCCpacket.trackPower ? enable_maskInverse : enable_mask;
 		}
 	}
 
 
-	/*Initialisation. call repeatedly to activate additional DCC outputs*/
-	void ICACHE_FLASH_ATTR dcc_init(uint32_t pin_info[3], uint8_t invert)
+	/*Initialisation. call repeatedly to activate additional DCC outputs
+	pin_info[] holds the DCC signal pin, pin_enable_info[] holds the output enable pin
+	*/
+	void ICACHE_FLASH_ATTR dcc_init(uint32_t dcc_info[4], uint32_t enable_info[4])
 	{
 		//load with an IDLE packet
 		DCCpacket.data[0] = 0xFF;
@@ -245,20 +243,262 @@ Note: using non PWM compat mode, the timebase is 200nS.
 		DCCpacket.packetLen = 3;
 
 
-		// PIN info: MUX-Register, Mux-Setting, PIN-Nr
-		PIN_FUNC_SELECT(pin_info[0], pin_info[1]);
-		//PIN_PULLUP_EN(pin_info[0]); 
-		if (invert == 0) {
-			dcc_mask |= (1 << pin_info[2]);
+		// PIN info[4]: MUX-Register, Mux-Setting, PIN-Nr, invert
+		PIN_FUNC_SELECT(dcc_info[0], dcc_info[1]);
+		//PIN_PULLUP_EN(dcc_info[0]); 
+		if (dcc_info[3] == 0) {
+			dcc_mask |= (1 << dcc_info[2]);
 		}
 		else {
-			dcc_maskInverse |= (1 << pin_info[2]);
+			dcc_maskInverse |= (1 << dcc_info[2]);
 		}
 		/*clear target bit with OUT_W1TC.  enable as an output with ENABLE_WITS*/
-		GPIO_REG_WRITE(GPIO_OUT_W1TC_ADDRESS, (1 << pin_info[2]));  //clear target bit
-		GPIO_REG_WRITE(GPIO_ENABLE_W1TS_ADDRESS, (1 << pin_info[2]));  //set pin as an output
+		GPIO_REG_WRITE(GPIO_OUT_W1TC_ADDRESS, (1 << dcc_info[2]));  //clear target bit
+		GPIO_REG_WRITE(GPIO_ENABLE_W1TS_ADDRESS, (1 << dcc_info[2]));  //set pin as an output
 		/*select totem-pole output, default is open drain which is selected with |4*/
-		GPIO_REG_WRITE(GPIO_PIN_ADDR(pin_info[2]), GPIO_REG_READ(GPIO_PIN_ADDR(pin_info[2])) & ~4);
+		GPIO_REG_WRITE(GPIO_PIN_ADDR(dcc_info[2]), GPIO_REG_READ(GPIO_PIN_ADDR(dcc_info[2])) & ~4);
+
+		/*set up enable pin(s)*/
+		
+		
+		PIN_FUNC_SELECT(enable_info[0], enable_info[1]);
+		if (enable_info[3] == 0) {
+			enable_mask |= (1 << enable_info[2]);
+		}
+		else {
+			enable_maskInverse |= (1 << enable_info[2]);
+		}
+		//clear target bit with OUT_W1TC.  enable as an output with ENABLE_WITS
+		GPIO_REG_WRITE(GPIO_OUT_W1TC_ADDRESS, (1 << enable_info[2]));  //clear target bit
+		GPIO_REG_WRITE(GPIO_ENABLE_W1TS_ADDRESS, (1 << enable_info[2]));  //set pin as an output
+		///elect totem-pole output, default is open drain which is selected with |4
+		GPIO_REG_WRITE(GPIO_PIN_ADDR(enable_info[2]), GPIO_REG_READ(GPIO_PIN_ADDR(enable_info[2])) & ~4);
+		
+
+#if PWM_USE_NMI
+		ETS_FRC_TIMER1_NMI_INTR_ATTACH(dcc_intr_handler);
+#else
+		ETS_FRC_TIMER1_INTR_ATTACH(dcc_intr_handler, NULL);
+#endif
+
+		TM1_EDGE_INT_ENABLE();
+		ETS_FRC1_INTR_ENABLE();
+		RTC_REG_WRITE(FRC1_LOAD_ADDRESS, 0);  //This starts timer
+		timer->frc1_ctrl = TIMER1_DIVIDE_BY_16 | TIMER1_ENABLE_TIMER;
+	}
+
+
+//DC pwm routines
+#define DC_COUNT_RELOAD  140U   //10mS counting complete duty periods
+#define DUTY_PERIOD 357U  //14kHz with 200nS ticks
+#define KICK_COUNT 10U
+#define KICKS 3U
+	static uint16_t pwm_mask = 0;
+	static uint16_t pwm_maskInverse = 0;
+	static uint16_t dir_mask = 0;
+	static uint16_t dir_maskInverse = 0;
+	static uint8_t  dcCount = 0;   //counts complete cycles, will trigger 10mS tick
+	static uint16_t  lowDutyPeriod = DUTY_PERIOD;
+	static uint16_t  hiDutyPeriod = 0;
+	static uint8_t  hiLowState = 0;
+	static int8_t	kickCount = KICK_COUNT;
+	
+	
+	//interrupt handler for DC pwm mode
+	static void ICACHE_RAM_ATTR pwm_intr_handler(void) {
+		if (DCCpacket.trackPower) {
+			
+			//have we finished high or low?  
+			if ((hiLowState ==0) && (hiDutyPeriod>0)) {
+				//just finished a low, so load with high
+				//EXCEPT where hiDuty is zero in which case we just execute low again
+					WRITE_PERI_REG(&timer->frc1_load, hiDutyPeriod);
+					gpio->out_w1ts = pwm_mask;  //set bits to logic 1
+					gpio->out_w1tc = pwm_maskInverse;  //set bits to logic 0
+					hiLowState = 1;
+			}
+			else {
+				//just finished a hi, or hiDutyPeriod==0 so load with lo
+				WRITE_PERI_REG(&timer->frc1_load, lowDutyPeriod);
+				gpio->out_w1ts = pwm_maskInverse;  //set bits to logic 0
+				gpio->out_w1tc = pwm_mask;  //set bits to logic 1
+				hiLowState = 0;
+				//only increment dcCount on low duty periods
+				dcCount++;
+			}
+		}
+		else {
+			//track power off, load another full period of low
+			lowDutyPeriod = DUTY_PERIOD;
+			hiDutyPeriod = 0;
+			WRITE_PERI_REG(&timer->frc1_load, DUTY_PERIOD);
+			gpio->out_w1ts = pwm_maskInverse;  //set bits to logic 0
+			gpio->out_w1tc = pwm_mask;  //set bits to logic 1
+			dcCount++;
+			hiLowState = 0;
+		}
+
+		//this will only be triggered during a low period when we have more time for processing
+		if (dcCount >= DC_COUNT_RELOAD) {
+			DCCpacket.msTickFlag = true;
+			dcCount = 0;
+			
+			//copy the last packet sent, don't care about the preamble
+			_TXbuffer.data[0] = DCCpacket.data[0];
+			_TXbuffer.data[1] = DCCpacket.data[1];
+			_TXbuffer.data[2] = DCCpacket.data[2];
+			//don't bother with data[3,4,5] as we will only respond to short addr 3, and 1 possibly 2 (extended)
+			//speed packets
+			_TXbuffer.packetLen = DCCpacket.packetLen;
+			//signal we are ready for another packet
+			DCCpacket.clearToSend = true;
+
+			//inspect the packet. we only care about loco 3, speed and dir
+			//S 9.2 para 40
+	
+			
+			if (_TXbuffer.data[0] == 3) {
+				//instruction is for loco 3, short addr 
+				if ((_TXbuffer.data[1] >> 6) == 0b01) {
+					//this is a basic speed/dir command 01DCSSSS
+					//C is the lsb of the speed code SSSS
+					//per S 9.2 para 50
+			//http://cpp.sh/9kmu6
+					
+					if ((_TXbuffer.data[1] & 0b1111) <= 1) {
+						//0 or 1 indicate a stop condition C=don't care
+						lowDutyPeriod = DUTY_PERIOD;
+						hiDutyPeriod = 0;
+					}
+					else {
+						//calculate the speed, essentially we have a 5 bit resolution.
+						uint8_t j = (_TXbuffer.data[1] & 0b1111)<<1;
+						j += (_TXbuffer.data[1] & 0b10000)>>4;  //add lsb 'C' bit
+						//step 1 is integer 4
+						j-=3;  //rebase at one
+						//value will be between 1 and 28
+						//saftey feature, cap j at 28
+						j = j > 28 ? 28:j;
+						
+
+						//rebase logic.  basically no motor will move on less than 50% duty, so we should start 
+						//at that point and the control is really exerted over 50-100% duty
+
+						hiDutyPeriod = DUTY_PERIOD / 2;
+						for (j = j;j > 0;j--) {
+							hiDutyPeriod += DUTY_PERIOD / 56;
+						}
+						lowDutyPeriod = DUTY_PERIOD - hiDutyPeriod;
+						//speed done.  speed 1 means hiDutyPeriod is slightly over 50% duty
+
+					}
+					
+
+					//check direction 01DCSSSS
+					if (_TXbuffer.data[1] & (1<<5)) {
+						//forward
+						gpio->out_w1ts = dir_mask;
+						gpio->out_w1tc = dir_maskInverse;  
+					}
+					else {
+						//reverse
+						gpio->out_w1ts = dir_maskInverse;  
+						gpio->out_w1tc = dir_mask;
+					}
+
+				}
+				else if (_TXbuffer.data[1] == 0b111111) {
+					//126 speed step instr follows
+					//check direction
+					if (_TXbuffer.data[2] & (1<<7)) {
+						//forward
+						gpio->out_w1ts = dir_mask;
+						gpio->out_w1tc = dir_maskInverse;
+					}
+					else {
+						//reverse
+						gpio->out_w1ts = dir_maskInverse;  
+						gpio->out_w1tc = dir_mask;  
+					}
+					//128 speed steps not implemented
+					/*
+					if (_TXbuffer.data[2] & 0b1111111 <=1) {
+						//0 or 1 indicate a stop condition
+						lowDutyPeriod = DUTY_PERIOD;
+					}
+					else {
+						//calculate the speed as 7 bits rebased to 1
+						uint8_t j = _TXbuffer.data[2] & 0b1111111;
+						j--;  //rebase at one
+							//value will be between 1 and 126
+						hiDutyPeriod = 0;
+						for (j = j;j > 0;j--) {
+							hiDutyPeriod += DUTY_PERIOD / 126;
+						}
+						//DEBUG hiDuty must be 13 minimum
+						if (hiDutyPeriod < 13) { hiDutyPeriod = 13; }
+
+						lowDutyPeriod = DUTY_PERIOD - hiDutyPeriod;
+						//speed done.  speed 1 means hiDutyPeriod is 3, so hopefully thats not too short
+					}
+					*/
+
+				}
+				
+
+				//end packet inspection, all other packet types and all other locos are ignored
+			}
+			
+			//kick logic. every KICK_COUNT x 10mS, put out KICKS x 10mS burst of 60% duty cycle
+			if ((--kickCount <= 0) && (hiDutyPeriod>0)) {
+				if (hiDutyPeriod < DUTY_PERIOD / 16) {
+					hiDutyPeriod = DUTY_PERIOD / 16;
+					lowDutyPeriod = DUTY_PERIOD - hiDutyPeriod;
+					if (kickCount <= KICKS) kickCount = KICK_COUNT;
+				}
+			}
+			
+		}
+
+	}
+
+	//call with a pwm pin and direction pin
+	void ICACHE_FLASH_ATTR dc_init(uint32_t pin_info_pwm[4], uint32_t pin_info_dir[4]) {
+		//load with an IDLE packet
+		DCCpacket.data[0] = 0xFF;
+		DCCpacket.data[1] = 0;
+		DCCpacket.data[2] = 0xFF;
+		DCCpacket.packetLen = 3;
+			
+
+		// PIN info[4]: MUX-Register, Mux-Setting, PIN-Nr, invert
+		PIN_FUNC_SELECT(pin_info_pwm[0], pin_info_pwm[1]);
+		if (pin_info_pwm[3] == 0) {
+			pwm_mask |= (1 << pin_info_pwm[2]);
+		}
+		else {
+			pwm_maskInverse |= (1 << pin_info_pwm[2]);
+		}
+		/*clear target bit with OUT_W1TC.  enable as an output with ENABLE_WITS*/
+		GPIO_REG_WRITE(GPIO_OUT_W1TC_ADDRESS, (1 << pin_info_pwm[2]));  //clear target bit
+		GPIO_REG_WRITE(GPIO_ENABLE_W1TS_ADDRESS, (1 << pin_info_pwm[2]));  //set pin as an output
+		/*select totem-pole output, default is open drain which is selected with |4*/
+		GPIO_REG_WRITE(GPIO_PIN_ADDR(pin_info_pwm[2]), GPIO_REG_READ(GPIO_PIN_ADDR(pin_info_pwm[2])) & ~4);
+
+		/*add pin control for direction*/
+		PIN_FUNC_SELECT(pin_info_dir[0], pin_info_dir[1]);
+		if (pin_info_dir[3] == 0) {
+			dir_mask |= (1 << pin_info_dir[2]);
+		}
+		else {
+			dir_maskInverse |= (1 << pin_info_dir[2]);
+	}
+		/*clear target bit with OUT_W1TC.  enable as an output with ENABLE_WITS*/
+		GPIO_REG_WRITE(GPIO_OUT_W1TC_ADDRESS, (1 << pin_info_dir[2]));  //clear target bit
+		GPIO_REG_WRITE(GPIO_ENABLE_W1TS_ADDRESS, (1 << pin_info_dir[2]));  //set pin as an output
+		/*select totem-pole output, default is open drain which is selected with |4*/
+		GPIO_REG_WRITE(GPIO_PIN_ADDR(pin_info_dir[2]), GPIO_REG_READ(GPIO_PIN_ADDR(pin_info_dir[2])) & ~4);
+
 
 
 #if PWM_USE_NMI
@@ -269,9 +509,9 @@ Note: using non PWM compat mode, the timebase is 200nS.
 
 		TM1_EDGE_INT_ENABLE();
 		ETS_FRC1_INTR_ENABLE();
-		RTC_REG_WRITE(FRC1_LOAD_ADDRESS, 0);  //i think this starts timer
-
+		RTC_REG_WRITE(FRC1_LOAD_ADDRESS, 0);  //This starts timer
 		timer->frc1_ctrl = TIMER1_DIVIDE_BY_16 | TIMER1_ENABLE_TIMER;
+}
 
-	}
+	
 
