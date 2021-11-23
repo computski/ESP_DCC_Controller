@@ -56,7 +56,9 @@ Easiest way to disable DC_PINS entry is rename it nDC_PINS
 */
 
 
-#define BOARD_THREE
+#define nBOARD_THREE
+#define nBOARD_ESP12_SHIELD
+#define WEMOS_D1_AND_L298_SHIELD
 
  #if defined(BOARD_ONE)
 	/*BOARD ONE, blue LCD on 3v3 supply using mjkdz backpack address 0x20
@@ -147,7 +149,7 @@ move the I2C bus to D5 and D6 */
 
 #define	PIN_HEARTBEAT 16  //D0
 
-#define DCC_PINS \
+#define nDCC_PINS \
 uint32 dcc_info[4] = { PERIPHS_IO_MUX_MTDI_U,  FUNC_GPIO0, 0 , 0 }; \
 uint32 enable_info[4] = { PERIPHS_IO_MUX_MTDI_U,  FUNC_GPIO5, 5 , 0 }; \
 uint32 dcc_infoA[4] = { PERIPHS_IO_MUX_MTDI_U,  FUNC_GPIO2, 2 , 0 }; \
@@ -156,7 +158,7 @@ uint32 enable_infoA[4] = { PERIPHS_IO_MUX_MTDI_U,  FUNC_GPIO4, 4 , 0 };
 //Each channel in the L293D can support max 600mA so keep two in phase
 
 
-#define nDC_PINS \
+#define DC_PINS \
 uint32 pwm_info[4] = { PERIPHS_IO_MUX_MTDI_U,  FUNC_GPIO5, 5 , 0 }; \
 uint32 pwm_infoA[4] = { PERIPHS_IO_MUX_MTDI_U,  FUNC_GPIO4, 4, 0 };\
 uint32 dir_info[4] = { PERIPHS_IO_MUX_MTDI_U,  FUNC_GPIO0, 0 , 0 }; \
@@ -187,6 +189,25 @@ so not clear why the pwm runs at full power on boot.  gpio 5,4 should be low. co
 #define KEYPAD_ADDRESS 0x3F   //pcf8574AT
 #define BOOTUP_LCD LiquidCrystal_I2C lcd(0x27, 2, 1, 0, 4, 5, 6, 7, 3, POSITIVE);  //YwRobot backpack
 
+
+#elif defined(WEMOS_D1_AND_L298_SHIELD)
+/*Wemos D1 stacked with L298 sheild*/
+
+#define	PIN_HEARTBEAT 16  //D0
+
+#define DCC_PINS \
+uint32 dcc_info[4] = { PERIPHS_IO_MUX_MTDI_U,  FUNC_GPIO12, 12 , 0 }; \
+uint32 enable_info[4] = { PERIPHS_IO_MUX_MTDI_U,  FUNC_GPIO5, 5 , 0 }; \
+uint32 dcc_infoA[4] = { PERIPHS_IO_MUX_MTDI_U,  FUNC_GPIO14, 14 , 0 }; \
+uint32 enable_infoA[4] = { PERIPHS_IO_MUX_MTDI_U,  FUNC_GPIO13,13 , 0 };
+
+#define	PIN_SCL		2 //D4 with 12k pullup
+#define	PIN_SDA		0  //D3 with 12k pullup
+#define	PIN_JOG1	4  //D2
+#define	PIN_JOG2	15 //D8 with 12k pulldown
+
+#define KEYPAD_ADDRESS 0x3F   //pcf8574AT
+#define BOOTUP_LCD LiquidCrystal_I2C lcd(0x27, 2, 1, 0, 4, 5, 6, 7, 3, POSITIVE);  //YwRobot backpack
 
 #endif
 
