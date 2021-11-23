@@ -1769,10 +1769,11 @@ void updateCvDisplay(void) {
 
 
 /*restores settings from EEPROM. If the software version has changed, we overwrite the eeprom with defaults.
- *we also need to clear certain values on boot. max EEPROM we can use is 4096*/
+ *we also need to clear certain values on boot. max EEPROM we can use is 4096
+ 2021-11-22 bug fix, with 8 locos and 8 turnouts, EEPROM needs to be min 532 bytes.  Expanded it to 1024*/
 void dccGetSettings() {
 	CONTROLLER defaultController;  //grab defaults as per DCCcore.h
-	EEPROM.begin(512);
+	EEPROM.begin(1024);
 	int eeAddr = 0;
 	EEPROM.get(eeAddr, bootController);
 	if (defaultController.softwareVersion != bootController.softwareVersion) {
@@ -1800,7 +1801,7 @@ void dccGetSettings() {
 	//2020-05-03 also turnouts
 	eeAddr += sizeof(loco);
 	EEPROM.get(eeAddr, turnout);
-	
+	eeAddr += sizeof(turnout);
 	//Reset certain parameters on every boot
 	for (auto& loc : loco) {
 		loc.speed = 0;
@@ -1826,9 +1827,8 @@ void dccGetSettings() {
 	unithrottle.digitPos = 0;
 
 	//trace dump the eeprom size used
-	trace(Serial.printf("GETsettings loco %d, turnout %d\r\n", sizeof(loco), sizeof(turnout));)
-	
-
+	trace(Serial.printf("GETsettings loco %d, turnout %d, bytes %d\r\n ", sizeof(loco), sizeof(turnout), eeAddr);)
+		
 }
 
 /*Call dccPutSettings if user changes a loco addr, short/long or step-size, or at system level they change current trip*/
@@ -1841,8 +1841,11 @@ void dccPutSettings() {
 	/*2020-05-03 also store turnouts*/
 	eeAddr += sizeof(loco);
 	EEPROM.put(eeAddr, turnout);
+	eeAddr += sizeof(turnout);
+
 	EEPROM.commit();
 	bootController.isDirty = false;
+	trace(Serial.printf("EEPROM commit, bytes %d\r\n",eeAddr);)
 }
 
 
