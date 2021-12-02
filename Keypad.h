@@ -29,13 +29,9 @@ struct KEYPAD {
 	uint8_t keyTimer;
 };
 
-/*in Cpp you can pass a struct by ref though the & symbol*/
-//https://stackoverflow.com/questions/15181765/passing-structs-to-functions/15181807
-/*calling function just calls with the var, no need for pointers because cpp makes this byRef*/
 
 extern KEYPAD keypad;
 
-//void  keyScan(KEYPAD &keypad);
 void keyScan(void);
 
 #endif

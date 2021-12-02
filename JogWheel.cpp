@@ -86,8 +86,10 @@ attachInterrupt(digitalPinToInterrupt(PIN_JOG2), jogHandler,CHANGE);
 jogWheel.state== R_START;
 }
 
+/*When compiling on newer compilers ISRs are checked if they are in RAM or flash memory, they should be in Flash. 
+Else you may see an error "ISR not in IRAM!" Use ICACHE_RAM_ATTR Credit: https://github.com/enfieldcat */
 
-void nsJogWheel::jogHandler() {
+void ICACHE_RAM_ATTR nsJogWheel::jogHandler() {
 	/*sample input pins*/
 	uint8_t pinstate = (digitalRead(PIN_JOG1) << 1) | digitalRead(PIN_JOG2);
 	/*determine new state from the pins and state table*/

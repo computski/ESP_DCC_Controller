@@ -14,7 +14,7 @@
 
 
 
-/*longest packet is 6 bytes when using POM and long address*/
+/*longest DCC packet is 6 bytes when using POM and long address*/
 /*2021-10-19 trackPower now controlled from DCClayer1*/
 	struct DCCBUFFER {
 		uint8_t data[6];
@@ -22,8 +22,11 @@
 		bool  clearToSend;
 		bool  longPreamble;
 		bool  msTickFlag;
-		bool  trackPower;  
+		bool  trackPower;
+		bool  fastTickFlag;
 	};
+
+	/*2021-11-25 fastTickFlag added, this runs at 1mS and is used for analog detection of ACK pulse in service mode*/
 
 	extern volatile DCCBUFFER DCCpacket;
 

@@ -926,8 +926,11 @@ void nsWiThrottle::broadcastLocoRoster(AsyncClient *client) {
 	
 	//JRMI Version 2.0, and set WITHROTTLE_TIMEOUT which is defined in the header file
 	//Note that *6 is from server to client. client needs to respond *+ or *- to activate/deactivate heartbeat monitoring
-	char buff[20];
-	snprintf(buff, 19, "VN2.0\r\n*%d\r\n", WITHROTTLE_TIMEOUT);
+	//2021-12-01 added PW80 to indicate webserver is on port 80
+	//2021-12-01 also added HTDCCESP as a server message to the client.  Steve Todd, the author of Engine Driver has
+	//kindly agreed to recognise this token in his app so that the Web menu item appears as DCC ESP
+	char buff[30];
+	snprintf(buff, 29, "VN2.0\r\nPW80\r\n*%d\r\nDCCESP\r\n", WITHROTTLE_TIMEOUT);
 	m.msg = buff;
 	
 	//example 2 entry roster list RL2]\[RGS 41}|{41}|{L]\[Test Loco}|{1234}|{L

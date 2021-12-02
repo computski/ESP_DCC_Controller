@@ -26,11 +26,11 @@ struct CONTROLLER
 	uint8_t	voltageLimit = 15;
 	char SSID[21] = "DCC_ESP";
 	char pwd[21] = "";
-	char IP[17] = "192.168.6.1\0";   //note the actual setting requires comma sep
+	char IP[17] = "192.168.6.1\0";   //note the actual setting requires comma separators
 	char STA_SSID[21] = "YOUR_SSID";  //SSID when running as a station on an external WiFi network
 	char STA_pwd[21] = "";			//pwd for station
-	uint16_t wsPort = 12080;
-	uint16_t tcpPort = 12090;
+	uint16_t wsPort = 12080;        //websocket port
+	uint16_t tcpPort = 12090;       //tcp port
 	bool isDirty = false;  //will be true if EEPROM needs to be written
 	bool flagLocoRoster;
 	bool flagTurnoutRoster;
@@ -38,13 +38,13 @@ struct CONTROLLER
 };
 
 //note for testing
-//home page is http://192.168.6.1 index.htm
+//home page is http://192.168.6.1/index.htm
 //websocket tests on ws://192.168.6.1:12080
 
 
 
 /*current monitoring is performed as part of the power object
-trip and trackpower are passive status flags, changing them does not cause the unit to 
+trip and trackpower are active flags, changing them will cause the unit to 
 disconnect power for example*/
 struct POWER
 {
@@ -54,8 +54,6 @@ struct POWER
 	bool  trackPower;
 	bool  report = true;  //set false for debug
 	/*these are internal working registers*/
-	uint sampleReg;
-	uint8_t sampleCount;
 	int ADresult;   //native units
 	/*these are results, populated either from INA or AD system*/
 	float quiescent_mA = 0;  
@@ -63,6 +61,7 @@ struct POWER
 	float bus_mA = 0;
 	/*these relate to acknowledgement pulses in service mode*/
 	float ackBase_mA;  //set this to bus_mA before starting
+	float bus_peak_mA = 0;
 	bool ackFlag;  //used by Service Mode for acknowledgement
 };
 
@@ -157,7 +156,7 @@ struct CV {
 	int8_t bitCount;
 } static m_cv;
 /*cvReg and cvData need to be 16 bit ints due to temporary values they hold from key entry*/
-/*2019-11-25 need to add bool verify, timer for verify pulse detect, also bit manip mode*/
+/*2019-11-25 added bool verify, timer for verify pulse detect, also bit manip mode*/
 /*forget bit mode.  in fact there is no verify, lets just byte-read on 'A' key. */
 
 
@@ -212,7 +211,6 @@ bool writePOMcommand(const char *addr, uint16_t cv, const char *val);
 bool writeServiceCommand(uint16_t cvReg, uint8_t cvVal, bool verify, bool enterSM, bool exitSM);
 float getVolt();  //debug
 
-//findLoco if this was re-written as a global function
 
 //debug
 void debugTurnoutArray(void);
@@ -240,8 +238,6 @@ static int8_t setLocoFromJog(nsJogWheel::JOGWHEEL &j);
 static void ina219Mode(boolean Avg);
 static int8_t setLoco(LOCO *loc, int8_t speed, bool dir);
 
-
-//static int8_t setLoco(LOCO *loc, float speed, bool dir);
 int8_t findLoco(char *address, char *slotAddress, bool ignoreEmpty = false);
 int8_t findTurnout(uint16_t turnoutAddress);
 static LOCO *getNextLoco(LOCO *loc);

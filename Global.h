@@ -11,9 +11,21 @@
 
 //see DDCcore.h for IP address and websocket port
 
+/*Set Max loco and turnouts here. If you increase max loco or turnout, beware of exceeding the EEPROM dimensions*/
+/*and more importantly beware exceeding the JSON output buffer length, 800 is ok for 8 locos*/
+/*important: if you change max loco, change the software version date in DCCcore.h to force a wipe and reload of
+the EEPROM*/
+#define	MAX_LOCO	8   
+#define	MAX_TURNOUT	8
+#define LOCO_ESTOP_TIMEOUT 8
+//define key-codes for these virtual keys on the keypad
+#define KEY_ESTOP	26
+#define KEY_MODE	25
+
 
 /*
-* PIN ASSIGNMENTS on the custom PCB implementations, see specific board configurations below
+* PIN ASSIGNMENTS for the NodeMCU module (D0-D8 here is specific to the nodeMCU) as used on some of the custom PCB implementations, 
+* see specific board configurations below
 * GPIO16   D0  drives the on-motherboard LED, active low. Used as heartbeat indicator and jogwheel-pushbutton active hi.
 * GPIO5    D1  default SCL on arduino wire.remember the pullup
 * GPIO4    D2  default SCA on arduino wire.remember the pullup.The keypad module has the pullup
@@ -34,8 +46,6 @@
 * the MODE button is only implemented via I2C keypad scan.  only makes sense to implement MODE if a display and keypad are present.
 */
 
-#define KEY_ESTOP	26
-#define KEY_MODE	25
 
 
 /*HARDARE CONFIGURATION
@@ -56,15 +66,15 @@ Easiest way to disable DC_PINS entry is rename it nDC_PINS
 */
 
 
-#define nBOARD_THREE
+#define nNODEMCU_OPTION3
 #define nBOARD_ESP12_SHIELD
-#define WEMOS_D1_AND_L298_SHIELD
+#define WEMOS_D1R1_AND_L298_SHIELD
 
- #if defined(BOARD_ONE)
+ #if defined(NODEMCU_OPTION1)
 	/*BOARD ONE, blue LCD on 3v3 supply using mjkdz backpack address 0x20
 	keyscan uses PCF8574AT on address 0x3F jumpers leftmost. Range 38-3F
-	whereas PCF8574T has address range 20-27h
-	on board LMD18200T and INA219 fitted*/
+	whereas PCF8574T has address range 20-27h on board LMD18200T and INA219 fitted
+	Uses custom PCB and a nodeMCU*/
 #define	PIN_HEARTBEAT	16  //D0
 #define	PIN_SCL	5	//D1
 #define	PIN_SDA	4	//D2
@@ -84,10 +94,10 @@ uint32 enable_infoA[4] = { PERIPHS_IO_MUX_MTDI_U,  FUNC_GPIO2, 4, 0 };
 #define KEYPAD_ADDRESS 0x3F   //pcf8574AT
 	#define BOOTUP_LCD LiquidCrystal_I2C lcd(0x20, 4, 5, 6, 0, 1, 2, 3, 7, NEGATIVE); //mjkdz backpack
 
-#elif defined(BOARD_TWO)
+#elif defined(NODEMCU_OPTION2)
 	/*BOARD TWO, yellow LCD on 5v supply using YwRobot clone backpack address 0x27
 	 *keypad uses PCF8574T on address 0x20 jumpers rightmost. Range 20-2F
-	 *off-board IBT2 and INA219 fitted*/
+	 *off-board IBT2 and INA219 fitted. Uses custom PCB and nodeMCU*/
 #define	PIN_HEARTBEAT	16  //D0
 #define	PIN_SCL	5	//D1
 #define	PIN_SDA	4	//D2
@@ -110,10 +120,10 @@ uint32 enable_infoA[4] = { PERIPHS_IO_MUX_MTDI_U,  FUNC_GPIO2, 4, 0 };
 #define KEYPAD_ADDRESS 0x20   //pcf8574T
 	#define BOOTUP_LCD LiquidCrystal_I2C lcd(0x27, 2, 1, 0, 4, 5, 6, 7, 3, POSITIVE); //YwRobot backpack
 
-#elif defined(BOARD_THREE)
+#elif defined(NODEMCU_OPTION3)
 	/*BOARD THREE, yellow LCD on 5v supply using YwRobot clone backpack address 0x27
 	keyscan uses PCF8574AT on address 0x3F jumpers leftmost. Range 38-3F
-	on-board LMD18200T and INA219 fitted*/
+	on-board LMD18200T and INA219 fitted, custom PCB used with nodeMCU fitted.*/
 #define	PIN_HEARTBEAT	16  //D0
 #define	PIN_SCL	5	//D1
 #define	PIN_SDA	4	//D2
@@ -145,7 +155,8 @@ uint32 dir_info[4] = { PERIPHS_IO_MUX_MTDI_U,  FUNC_GPIO2, 2 , 0 };
 #elif defined(BOARD_ESP12_SHIELD)
 /*DOIT motor shield for nodeMCU ESP12. Need to re-assign the pin functions and PIN_ESTOP is not available. Note
 that PIN_POWER_ALT is defined because this board uses an L293, and uses D1-4 for control, which requires us to
-move the I2C bus to D5 and D6 */
+move the I2C bus to D5 and D6.  The DOIT sheild needs and external INA219 current monitor and it has no on-board
+regulator.*/
 
 #define	PIN_HEARTBEAT 16  //D0
 
@@ -175,7 +186,6 @@ GPIO3: pin is high at BOOT.
 GPIO1: pin is high at BOOT, boot failure if pulled LOW.
 GPIO10: pin is high at BOOT.
 GPIO9: pin is high at BOOT.
-so not clear why the pwm runs at full power on boot.  gpio 5,4 should be low. code issue?
 */
 
 
@@ -190,10 +200,31 @@ so not clear why the pwm runs at full power on boot.  gpio 5,4 should be low. co
 #define BOOTUP_LCD LiquidCrystal_I2C lcd(0x27, 2, 1, 0, 4, 5, 6, 7, 3, POSITIVE);  //YwRobot backpack
 
 
-#elif defined(WEMOS_D1_AND_L298_SHIELD)
-/*Wemos D1 stacked with L298 sheild*/
+#elif defined(WEMOS_D1R1_AND_L298_SHIELD)
+/*Wemos D1-R1 stacked with L298 sheild, note that the D1-R2 is a newer model with different pinouts*/
+/*Cut the BRAKE jumpers on the  L298 shield. These are not required and we don't want them driven by
+the I2C pins as it will corrupt the DCC signal.
+The board has an Arduino form factor, the pins are as follows
+D0 GPIO3   RX
+D1 GPIO1   TX
+D2 GPIO16  heartbeat and jogwheel pushbutton (active hi)
+D3 GPIO5   DCC enable (pwm)
+D4 GPIO4   Jog1
+D5 GPIO14  DCC signal (dir)
+D6 GPIO12  DCC signal (dir)
+D7 GPIO13  DCC enable (pwm)
+D8 GPIO0   SDA, with 12k pullup
+D9 GPIO2   SCL, with 12k pullup
+D10	GPIO15 Jog2
 
-#define	PIN_HEARTBEAT 16  //D0
+*/
+
+#define USE_ANALOG_MEASUREMENT
+//#define ANALOG_SCALING 1.95  //1.65v is 512 conversion for 1000mA (1.18 to match multimeter RMS)
+#define ANALOG_SCALING 3.9  //when using A and B in parallel  (2.36 to match multimeter RMS)
+
+
+#define	PIN_HEARTBEAT 16  //and jogwheel pushbutton
 
 #define DCC_PINS \
 uint32 dcc_info[4] = { PERIPHS_IO_MUX_MTDI_U,  FUNC_GPIO12, 12 , 0 }; \
@@ -201,29 +232,25 @@ uint32 enable_info[4] = { PERIPHS_IO_MUX_MTDI_U,  FUNC_GPIO5, 5 , 0 }; \
 uint32 dcc_infoA[4] = { PERIPHS_IO_MUX_MTDI_U,  FUNC_GPIO14, 14 , 0 }; \
 uint32 enable_infoA[4] = { PERIPHS_IO_MUX_MTDI_U,  FUNC_GPIO13,13 , 0 };
 
-#define	PIN_SCL		2 //D4 with 12k pullup
-#define	PIN_SDA		0  //D3 with 12k pullup
-#define	PIN_JOG1	4  //D2
-#define	PIN_JOG2	15 //D8 with 12k pulldown
+#define	PIN_SCL		2 //12k pullup
+#define	PIN_SDA		0  //12k pullup
+#define	PIN_JOG1	4  
+#define	PIN_JOG2	15 //12k pulldown
 
-#define KEYPAD_ADDRESS 0x3F   //pcf8574AT
+#define KEYPAD_ADDRESS 0x21   //pcf8574
+//addr, en,rw,rs,d4,d5,d6,d7,backlight, polarity.   we are using this as a 4 bit device
+//my display pinout is rs,rw,e,d0-d7.  only d<4-7> are used. <210>  appears because bits <012> are mapped
+//as en,rw,rs and we need to reorder them per actual order on the hardware, 3 is mapped to the backlight
+//<4-7> appear in that order on the backpack and on the display.
 #define BOOTUP_LCD LiquidCrystal_I2C lcd(0x27, 2, 1, 0, 4, 5, 6, 7, 3, POSITIVE);  //YwRobot backpack
 
 #endif
 
 
-/*if you increase max loco or turnout, beware of exceeding the EEPROM dimensions*/
-/*and more importantly beware exceeding the JSON output buffer length, 800 is ok for 8 locos*/
-/*important: if you change max loco, change the software version date in DCCcore.h to force a wipe and reload of
-the EEPROM*/
-#define	MAX_LOCO	8   
-#define	MAX_TURNOUT	8
-#define LOCO_ESTOP_TIMEOUT 8
+
 
 //set nTRACE to disable, TRACE to enable serial tracing.  Disable for production.
 #define nTRACE   
-
-//https ://stackoverflow.com/questions/7246512/ifdef-inside-a-macro
 
 #ifndef TRACE
 	#define trace(traceCodeBlock) ;
@@ -231,10 +258,10 @@ the EEPROM*/
 	#define trace(traceCodeBlock) traceCodeBlock
 #endif
 
-//If TRACE is defined, we include the traceCodeBlock statements
-//otherwise we write ; and effectively exclude what's inside trace()
-//BUT this is global.  defining TRACE within a module has no effect
-//you'd need to move this macro from global.h to each file
+/*If TRACE is defined, we include the traceCodeBlock statements
+otherwise we write ; and effectively exclude what's inside trace()
+This is GLOBAL.  Defining TRACE within a module has no effect
+you'd need to move this macro from global.h to each file*/
 
 
 /*end of Global.h*/

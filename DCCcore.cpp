@@ -9,18 +9,16 @@
 #include <LiquidCrystal_I2C.h>   //Github mlinares1998/NewLiquidCrystal
 //https://github.com/mlinares1998/NewLiquidCrystal
 
-#include <Adafruit_INA219.h>
-
-
-
-/*LCD specific I2C hardware wireup, uses the LiquidCrystal_I2C library from
-https://bitbucket.org/fmalpartida/new-liquidcrystal/wiki/Home   boo, dead link
+/*LCD specific I2C hardware wireup, uses the LiquidCrystal_I2C library originally from
+https://bitbucket.org/fmalpartida/new-liquidcrystal/wiki/Home   but now a dead link
 allows you to wire-up the pins P0-P7 to match the EN,RW etc pins on the display
-addr, en,rw,rs,d4,d5,d6,d7,bl,blpol
+addr, en,rw,rs,d4,d5,d6,d7,backlight,backlightPolarity
 BOOTUP_LCD creates an instance of the LiquidCrystal_I2C class and defines its parameters
 its defined in Global.h hardware section
 */
 
+//current and voltage monitoring device
+#include <Adafruit_INA219.h>
 
 
 BOOTUP_LCD
@@ -742,9 +740,14 @@ void dccPacketEngine(void) {
 				break;
 
 			case RD_FINAL:
+#ifdef USE_ANALOG_MEASUREMENT
+				/*when detecting a 6mS current pulse using the AD converter, this is done outside of this routine
+				on a 1mS sample frequency. This routine won't be called again until the RD_RESET packet has been
+				sent out*/
+#else
 				//read the result of the one-time sample. was 128 samples, and we need one third  of these to be >55mA up-pulse
 				power.ackFlag = ((ina219.getCurrent_mA() - power.ackBase_mA) > 20)  ? true:false;
-				
+#endif			
 				//read the ack pulse as sampled, 80mS+ will have passed since RD_RESET entered
 				if (m_cv.bitCount >=0) {
 					//bits 7 thro to 1
@@ -1127,6 +1130,7 @@ bool setCVfromKey(void) {
 		m_cv.timeout = 8;  //2 sec
 		/*set up entry conditions, including capturing the bus current*/
 		power.ackBase_mA = power.bus_mA;
+		power.bus_peak_mA = power.ackBase_mA;
 		//change to trigger mode and take one sample to initialise the ina
 		ina219Mode(false);
 		m_cv.state = RD_START;
@@ -2671,7 +2675,7 @@ int8_t DCCcore(void) {
 		/*INA219 current monitoring code block, samples at 10mS intervals.  The device is set to average
 		16 samples over 8.5mS which will avoid spikes causing false trips
 		do not update the reading if we have a trip condition, wish to preserve the peak current on the display
-		if bus_volts==32 the INA is not present and we revert to the AD converter readings*/
+		if the INA is not present, bus volts will read as 32v or higher*/
 
 		 /*NOTE: to reset a power trip, press ESTOP, it will clear the trip on exit
 			alternatively cycle power through JSON WiThrottle*/
@@ -2680,7 +2684,14 @@ int8_t DCCcore(void) {
 		if (power.trip == false) {
 			/*implement a rolling average weighing of 0.2, this gives 90% of final value in 10 samples
 			i.e. a 100mS response to overloads*/					
-			
+
+#ifdef USE_ANALOG_MEASUREMENT
+		//Analoge measurement exponentially smooths readings into the bus_mA value.
+			power.ADresult = int(power.ADresult*0.8 + 0.2*analogRead(A0));
+			power.bus_mA = ANALOG_SCALING * power.ADresult;
+					
+#else
+			//INA based measurement
 			power.bus_volts = ina219.getBusVoltage_V();
 			//2021-02-18 use an exponential average for current monitoring.  The L298 and IBT2 do cause a trip without 
 			//exponential smoothing just on a INA average reading, however the LMD18200 does not cause a trip.
@@ -2688,8 +2699,8 @@ int8_t DCCcore(void) {
 			//the short and won't trigger a 2A trip.
 			//If we apply exponential smoothing, the 2A overload is correctly captured, which is counter intuitive.
 			power.bus_mA = (ina219.getCurrent_mA()*0.2) + 0.8*power.bus_mA;
-
-
+#endif
+								   
 			if (power.bus_mA < power.quiescent_mA) { power.quiescent_mA = power.bus_mA; }
 				
 			//Power trip condition present?
@@ -2697,14 +2708,13 @@ int8_t DCCcore(void) {
 				if (power.bus_mA - power.quiescent_mA > 250) { 
 					Serial.print(F("Service Mode power trip "));
 					power.trip = true; 
-				}
+					}
 			}
 			else if (power.bus_mA > bootController.currentLimit) {  
 					Serial.print(F("Current trip "));
 					Serial.println(power.bus_mA, DEC);
-					Serial.println(ina219.getCurrent_mA(), DEC);
 					power.trip = true;  
-				}
+					}
 
 			//look for over-voltage condition
 			if (power.bus_volts > bootController.voltageLimit) {
@@ -2713,25 +2723,18 @@ int8_t DCCcore(void) {
 			}
 
 
-			//2021-10-12 did we just trip the power? If so, broadcast this to the WiThrottles
-			#ifdef _WITHROTTLE_h
-			if (power.trip)	nsWiThrottle::broadcastPower();
-			#endif
-
-
-
+			//2021-10-12 did we just trip the power?  If so signal that trackPower is now off 
+			//and broadcast ths to the WiThrottles
+			
+			if (power.trip)	{
+				power.trackPower = false;
+#ifdef _WITHROTTLE_h
+				nsWiThrottle::broadcastPower();
+				trace(Serial.println("TRIP bcast");)
+#endif
+			}			   
 		}   //end of power trip monitoring
-
-		
-		
-		//2020-12-18 power.trip and trackpower flags reworked to allow trackPower flag to 
-		//control the power rather than it being a passive indicator flag
-		if (power.trip) power.trackPower = false;
-
-		//2021-01-03 disable analogue power measurement, was not accurate.  Possibly due to Wifi
-		//system causing too much noise in the measurements
-		//line below left in as test code
-		power.ADresult = int(power.ADresult*0.8 + 0.2*analogRead(A0));
+	
 
 	}//end msTickFlag, 10mS
 
@@ -2739,7 +2742,29 @@ int8_t DCCcore(void) {
 	//Code below is run on every call to DCCcore.
 	//call the dcc packet engine
 	dccPacketEngine();
+
+	//If using the ESP AD converter, sample AD every 1mS when in DCC Service Mode
+#ifdef USE_ANALOG_MEASUREMENT
+	switch (m_cv.state)
+	{
+	case RD_START:
+		//get ready for ACK, capture the base current
+		//ACK might occur during the RD_RESET packets or RD_FINAL packets that follow RD_START
+		power.ackBase_mA = power.bus_mA;
+		power.ackFlag = false;
+		break;
+	case RD_FINAL:
+	//sample at 1mS, we don't look for a sustained 60mA for 6mS pulse, the first high sample will do
+		if (!DCCpacket.fastTickFlag) break;
+			DCCpacket.fastTickFlag = false;
+			if (power.ackFlag) break;
+			if ((analogRead(A0) * ANALOG_SCALING) > (power.ackBase_mA + 60)) {power.ackFlag = true;}
+	}
+	//m.cv reverts to CV_IDLE when done
+#endif
+
 	return r;
+
 }//end function
 
 //sets INA current monitoring in average mode or trigger mode (for ACK pulse in service mode)
@@ -3097,6 +3122,7 @@ bool writeServiceCommand(uint16_t cvReg, uint8_t cvVal, bool verify, bool enterS
 		m_cv.timeout = 8;  //2 sec
 		//set up entry conditions, including capturing the bus current
 		power.ackBase_mA = power.bus_mA;
+		power.bus_peak_mA = power.ackBase_mA;
 		//change to trigger mode and take one sample to initialise the ina
 		ina219Mode(false);
 		m_cv.state = RD_START;

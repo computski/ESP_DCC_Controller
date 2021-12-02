@@ -12,7 +12,7 @@
 #endif
 
 #include <ESPAsyncTCP.h>  //Github me-no-dev/ESPAsyncTCP
-#include <string>   //required if you wish to compile in arduino IDE this is the std::string library
+#include <string>   //required if you wish to compile in arduino IDE, this is the std::string library
 
 namespace nsWiThrottle {
 
@@ -66,8 +66,6 @@ namespace nsWiThrottle {
 	static void sendToClient(std::string s, AsyncClient *client);
 	static void	queueMessage(std::string s, AsyncClient *client);
 	static void setPower(bool powerOn);
-	//static int8_t findTurnout(uint16_t turnoutAddress);
-	//static int8_t findLoco(char *address, char *slotAddress);   //should move to DCCcore
 	static int8_t addReleaseThrottle(AsyncClient *client, char MT, char *address, bool doAdd);
 	static bool checkDoSteal(char *address, bool checkOnly, bool &isConsist);
 	static void setConsistID(THROTTLE *t);

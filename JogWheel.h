@@ -20,7 +20,6 @@ namespace nsJogWheel {
 	struct JOGWHEEL {
 		bool    jogEvent;   //rotation or button event for system to process
 		bool	jogCW;   //true if rotation was clockwise
-		//uint8_t jogTimer;  //used for masking on jogwheel
 		bool	jogButtonEvent;
 		bool    jogButton; //button is depressed
 		bool    jogHeld;  //button held
@@ -45,7 +44,7 @@ namespace nsJogWheel {
 	void jogHandler();
 	void jogWheelScan();
 
-	//extern JOGWHEEL jogWheel;   //does not work inside the namespace!
+	//extern JOGWHEEL jogWheel;   //does not work inside the namespace!  Fully qualify it, see below
 }//end of namespace
 
 
@@ -57,7 +56,7 @@ namespace nsJogWheel {
 
 
 
-extern nsJogWheel::JOGWHEEL jogWheel;   //need to put the extern here and fully qualify it
+extern nsJogWheel::JOGWHEEL jogWheel;   //put the extern here and fully qualify it
 
 #endif
 

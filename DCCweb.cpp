@@ -31,8 +31,18 @@ WebSocketsServer *webSocket;
 #pragma region WEBSERVER_routines
 
 void handleRoot() {
-	web.send(200, "text/html", "<h1>You are connected</h1>");
+	//web.send(200, "text/html", "<h1>You are connected</h1>");
 	trace(Serial.println(F("HTTP server handleRoot."));)
+//2021-12-01 Engine Driver will request the directory root, i.e. / if you activate its Web menu item
+
+	if (SPIFFS.exists("/index.htm")) {                            
+		File file = SPIFFS.open("/index.htm", "r");                 
+		size_t sent = web.streamFile(file, "text/html");  //we know its html!
+		file.close();                                      
+	}
+	else {
+		trace(Serial.println(F("cannot find /index.htm"));)
+	}
 }
 
 String getContentType(String filename) { // convert the file extension to the MIME type

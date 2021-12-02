@@ -43,6 +43,7 @@ Note: using non PWM compat mode, the timebase is 200nS.
 #define ticksZERO 580  //116uS half cycles for DCC zero
 #define ticksONE  281  //58uS half cycles for DCC one, was 290 tweaked to 281
 #define ticksMS  172  //10mS interval.  will need adjusting from 172
+#define ticksMSfast  17 //1mS interval. 
 #endif
 
 
@@ -221,6 +222,9 @@ Note: using non PWM compat mode, the timebase is 200nS.
 			}
 			TXbitCount--;
 		}
+		/*one millisecond fast tick flag*/
+		DCCpacket.fastTickFlag = ((dccCount % ticksMSfast) == 0) ? true : false;
+
 		/*ten millisecond flag.  DCC zeros have twice the period length hence the count is doubled for these*/
 		if (++dccCount >= ticksMS) {
 			dccCount = 0;
@@ -228,6 +232,7 @@ Note: using non PWM compat mode, the timebase is 200nS.
 			gpio->out_w1ts = DCCpacket.trackPower ? enable_mask:enable_maskInverse;
 			gpio->out_w1tc = DCCpacket.trackPower ? enable_maskInverse : enable_mask;
 		}
+
 	}
 
 
