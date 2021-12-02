@@ -5,7 +5,7 @@
     <!--galaxy S9 viewport size is 360 x 740 PX -->
     <!--galaxy S5 viewport size is 360 x 640 PX -->
 
-    <title>ESP 2866 DCC controller - home</title>
+    <title>DCC ESP controller - home</title>
 
     <style>
         .outer {
@@ -215,7 +215,7 @@
         function setPower() {
             //do some basic validation.  Numeric range validation is done on the sever
             //note that the server retransmits the settings every second which will overwrite attempts to change them
-            //for this reason, the focus event is used to suspect server-data to UI updates
+            //for this reason, the focus event is used to suspend server-data to UI updates
 
             setmA.value = setmA.value.replace(/[+-\x2E]/gi, "");
             setV.value = setV.value.replace(/[+-\x2E]/gi, "");
@@ -304,7 +304,7 @@
 
 <body onload="boot()">
     <div class="outer">
-        <p><b>ESP DCC power settings</b></p>
+        <p><b>DCC ESP power settings - HOME</b></p>
 
         <table border="0" style="width:100%">
             <tr>
@@ -343,12 +343,9 @@
         <br />
         <a href="roster.htm">locomotive roster</a><br /><br />
         <a href="turnout.htm">turnout roster</a><br /><br />
-        <a href="service.htm">service mode (prog track)</a><br /><br />
         <a href="pom.htm">programme on main (POM)</a><br /><br />
+        <a href="service.htm">service mode (prog track)</a><br /><br />
         <a href="hardware.htm">hardware settings</a><br /><br />
-
-
-
 
     </div>
 
