@@ -66,8 +66,8 @@
         var wsUri = "192.168.6.1:12080/";
 
 
-        //define send-receive objects
-        var power = { "type": "dccUI", "cmd": "power", "mA_limit": "", "V_limit": "", "mA": 23, "V": 2.2, "trip": true, "track": false };
+        //define send-receive objects. 2021-12-06 initialise "track" as unknown
+        var power = { "type": "dccUI", "cmd": "power", "mA_limit": "", "V_limit": "", "mA": 23, "V": 2.2, "trip": true, "track": "unknown"};
         var hardware = { "type": "dccUI", "cmd": "hardware", "SSID": "DCC_02", "IP": "192.168.7.1", "MAC": "", "pwd": "", "wsPort": 12080, "wiPort": 12090, "version": 0, "action": "poll" };
 
         var attempts = 0;
@@ -165,7 +165,11 @@
                 console.log("websocket open");
             }
             //send a poll for power setting
-            setPower();
+            //2021-12-06 don't, setPower is a write command, we don't have a poll version
+//and this is causing unintended power shut-offs
+	//the server broadcasts power status every second anyway
+	//setPower();
+	
         }
 
         function onClose(evt) {
