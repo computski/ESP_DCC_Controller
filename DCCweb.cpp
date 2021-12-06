@@ -257,7 +257,8 @@ void nsDCCweb::DCCwebWS(JsonObject& root) {
 		
 			v = root["track"];
 			if (v != nullptr) {
-				setPower(cBool(v));
+				//2021-12-06 if value is unknown, client wants to poll it, not set it
+				if (strcmp(cmd, "unknown") != 0) setPower(cBool(v));
 			}
 
 			v = root["SM"];
