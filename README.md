@@ -24,3 +24,5 @@ Does not support DigiTrains throttle on mobile (this is websockets based)
 
 2021-11-01 added DC support, system can run as a simple PWM DC controller and in which case it will respond only to loco 3 and 28 speed steps
 and added a definition for the DOIT ESP12 motor shield.  This is a cheap L293 shield that fits the nodeMCU. requires an external INA219 module.
+
+2021-12-07 added support for a WeMos D1R1 board and L298 motor shield.  Simple, 2 boards, 1 PSU and no soldering.  See Computski channel on youTube.
