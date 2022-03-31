@@ -26,3 +26,5 @@ Does not support DigiTrains throttle on mobile (this is websockets based)
 and added a definition for the DOIT ESP12 motor shield.  This is a cheap L293 shield that fits the nodeMCU. requires an external INA219 module.
 
 2021-12-07 added support for a WeMos D1R1 board and L298 motor shield.  Simple, 2 boards, 1 PSU and no soldering.  See Computski channel on youTube.
+
+2022-03-31 added support for HW40 rotary encoder types for Jogwheel.  This is configured in Global.h
