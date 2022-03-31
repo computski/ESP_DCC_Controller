@@ -4,7 +4,7 @@
 #define _GLOBAL_h
 
 #if defined(ARDUINO) && ARDUINO >= 100
-	#include "arduino.h"
+	#include "Arduino.h"
 #else
 	#include "WProgram.h"
 #endif
@@ -44,6 +44,9 @@ the EEPROM*/
 * these two existing on-board LEDs through your case.
 *
 * the MODE button is only implemented via I2C keypad scan.  only makes sense to implement MODE if a display and keypad are present.
+*
+* Note: hardware bug, sometimes the jogwheel will be 'stuck' between detents.  It might pull D8 high as a result which will prevent
+* the unit from booting.  Rotate the jogwheel and the unit should boot.
 */
 
 
@@ -63,11 +66,15 @@ To create a DC system, ensure you define DC_PINS macro in the board of your choi
 comment-out DC_PINS or omit it entirely the compiler will expect to find DCC_PINS and build a DCC system.
 If both are missing the compiler will throw an error.
 Easiest way to disable DC_PINS entry is rename it nDC_PINS
+
+For jogwheel, if you are using a HW40 device add this line to your hardware configuration
+otherwise, omit this line or change it to #define nROTARY_HW40
+#define ROTARY_HW40
 */
 
 
-#define nNODEMCU_OPTION3
-#define nBOARD_ESP12_SHIELD
+#define nNODEMCU_CUSTOM_PCB_3
+#define nNODEMCU_DOIT_SHIELD
 #define WEMOS_D1R1_AND_L298_SHIELD
 
  #if defined(NODEMCU_OPTION1)
@@ -81,10 +88,8 @@ Easiest way to disable DC_PINS entry is rename it nDC_PINS
 #define	PIN_ESTOP	0	//D3
 
 #define DCC_PINS \
-uint32 dcc_info[4] = { PERIPHS_IO_MUX_MTDI_U,  FUNC_GPIO14, 14, 0 }; \
-uint32 dcc_infoA[4] = { PERIPHS_IO_MUX_MTDI_U,  FUNC_GPIO12, 12, 1 }; \
-uint32 enable_info[4] = { PERIPHS_IO_MUX_MTDI_U,  FUNC_GPIO2, 4, 0 }; \
-uint32 enable_infoA[4] = { PERIPHS_IO_MUX_MTDI_U,  FUNC_GPIO2, 4, 0 };
+dcc_init(12, 2, true, false);\
+dcc_init(14, 2, false, false);
 	//DCC pins are D5 and D6 in antiphase, enable-power pin is D4 (GPIO2) 
 	//there is only one enable pin, so just use it on both calls to dccInit
 
@@ -104,10 +109,8 @@ uint32 enable_infoA[4] = { PERIPHS_IO_MUX_MTDI_U,  FUNC_GPIO2, 4, 0 };
 #define	PIN_ESTOP	0	//D3
 
 #define DCC_PINS \
-uint32 dcc_info[4] = { PERIPHS_IO_MUX_MTDI_U,  FUNC_GPIO14, 14, 0 }; \
-uint32 dcc_infoA[4] = { PERIPHS_IO_MUX_MTDI_U,  FUNC_GPIO12, 12, 1 }; \
-uint32 enable_info[4] = { PERIPHS_IO_MUX_MTDI_U,  FUNC_GPIO2, 4, 0 }; \
-uint32 enable_infoA[4] = { PERIPHS_IO_MUX_MTDI_U,  FUNC_GPIO2, 4, 0 };
+dcc_init(12, 2, true, false);\
+dcc_init(14, 2, false, false);
 //DCC pins are D5 and D6 in antiphase, enable-power pin is D4 (GPIO2) 
 //there is only one enable pin, so just use it on both calls to dccInit
 
@@ -120,7 +123,7 @@ uint32 enable_infoA[4] = { PERIPHS_IO_MUX_MTDI_U,  FUNC_GPIO2, 4, 0 };
 #define KEYPAD_ADDRESS 0x20   //pcf8574T
 	#define BOOTUP_LCD LiquidCrystal_I2C lcd(0x27, 2, 1, 0, 4, 5, 6, 7, 3, POSITIVE); //YwRobot backpack
 
-#elif defined(NODEMCU_OPTION3)
+#elif defined(NODEMCU_CUSTOM_PCB_3)
 	/*BOARD THREE, yellow LCD on 5v supply using YwRobot clone backpack address 0x27
 	keyscan uses PCF8574AT on address 0x3F jumpers leftmost. Range 38-3F
 	on-board LMD18200T and INA219 fitted, custom PCB used with nodeMCU fitted.*/
@@ -130,18 +133,17 @@ uint32 enable_infoA[4] = { PERIPHS_IO_MUX_MTDI_U,  FUNC_GPIO2, 4, 0 };
 #define	PIN_ESTOP	0	//D3
 
 #define DCC_PINS \
-uint32 dcc_info[4] = { PERIPHS_IO_MUX_MTDI_U,  FUNC_GPIO12, 12, 0 }; \
-uint32 dcc_infoA[4] = { PERIPHS_IO_MUX_MTDI_U,  FUNC_GPIO14, 14, 1 }; \
-uint32 enable_info[4] = { PERIPHS_IO_MUX_MTDI_U,  FUNC_GPIO2, 2, 0 }; \
-uint32 enable_infoA[4] = { PERIPHS_IO_MUX_MTDI_U,  FUNC_GPIO2, 2, 0 };
+dcc_init(12,2,true,false);\
+dcc_init(14,2,false,false);
+
 //DCC pins are D5 (GPIO14) and D6 (GPIO12) in antiphase, enable-power pin is D4 (GPIO2) 
 //there is only one enable pin, so just use it on both calls to dccInit
 //The LMD18200T only needs D5, however if you use an off board L298 or IBT2 then D6 is also required
 
 
 #define nDC_PINS \
-uint32 pwm_info[4] = { PERIPHS_IO_MUX_MTDI_U,  FUNC_GPIO14, 14 , 0 }; \
-uint32 dir_info[4] = { PERIPHS_IO_MUX_MTDI_U,  FUNC_GPIO2, 2 , 0 }; 
+dc_init(14, 2, true, false);\
+
 //DC pins for LMD18200 are pwm on  D4 (GPIO2) and dir on D5 (GPIO14)
 //D6 is unused
 
@@ -152,28 +154,25 @@ uint32 dir_info[4] = { PERIPHS_IO_MUX_MTDI_U,  FUNC_GPIO2, 2 , 0 };
 #define KEYPAD_ADDRESS 0x3F   //pcf8574AT
 #define BOOTUP_LCD LiquidCrystal_I2C lcd(0x27, 2, 1, 0, 4, 5, 6, 7, 3, POSITIVE);  //YwRobot backpack
 
-#elif defined(BOARD_ESP12_SHIELD)
+#elif defined(NODEMCU_DOIT_SHIELD)
 /*DOIT motor shield for nodeMCU ESP12. Need to re-assign the pin functions and PIN_ESTOP is not available. Note
 that PIN_POWER_ALT is defined because this board uses an L293, and uses D1-4 for control, which requires us to
 move the I2C bus to D5 and D6.  The DOIT sheild needs and external INA219 current monitor and it has no on-board
-regulator.*/
+regulator or current sense resistor.*/
 
 #define	PIN_HEARTBEAT 16  //D0
 
 #define nDCC_PINS \
-uint32 dcc_info[4] = { PERIPHS_IO_MUX_MTDI_U,  FUNC_GPIO0, 0 , 0 }; \
-uint32 enable_info[4] = { PERIPHS_IO_MUX_MTDI_U,  FUNC_GPIO5, 5 , 0 }; \
-uint32 dcc_infoA[4] = { PERIPHS_IO_MUX_MTDI_U,  FUNC_GPIO2, 2 , 0 }; \
-uint32 enable_infoA[4] = { PERIPHS_IO_MUX_MTDI_U,  FUNC_GPIO4, 4 , 0 };
+dcc_init(0, 5, true, false);\
+dcc_init(2, 4, true, false);
 //DCC pins are D3,4 (dir on module GPIO0,2) in phase.  power enable pins are D1,D2 (pwm on module GPIO5,4) active hi
 //Each channel in the L293D can support max 600mA so keep two in phase
 
 
 #define DC_PINS \
-uint32 pwm_info[4] = { PERIPHS_IO_MUX_MTDI_U,  FUNC_GPIO5, 5 , 0 }; \
-uint32 pwm_infoA[4] = { PERIPHS_IO_MUX_MTDI_U,  FUNC_GPIO4, 4, 0 };\
-uint32 dir_info[4] = { PERIPHS_IO_MUX_MTDI_U,  FUNC_GPIO0, 0 , 0 }; \
-uint32 dir_infoA[4] = { PERIPHS_IO_MUX_MTDI_U,  FUNC_GPIO2, 2 , 0 }; 
+dc_init(5, 0, true, false);\
+dc_init(4, 2, true, false);
+
 //DC pwm pins D1,D2 are in phase.  dir pins D3,D4 are also in phase 
 
 
@@ -207,35 +206,59 @@ the I2C pins as it will corrupt the DCC signal.
 The board has an Arduino form factor, the pins are as follows
 D0 GPIO3   RX
 D1 GPIO1   TX
-D2 GPIO16  heartbeat and jogwheel pushbutton (active hi)
+D2 GPIO16  Jog pushbutton.   IO16 cannot support an interrupt.
 D3 GPIO5   DCC enable (pwm)
 D4 GPIO4   Jog1
 D5 GPIO14  DCC signal (dir)
 D6 GPIO12  DCC signal (dir)
 D7 GPIO13  DCC enable (pwm)
-D8 GPIO0   SDA, with 12k pullup
-D9 GPIO2   SCL, with 12k pullup
-D10	GPIO15 Jog2
+D8 GPIO0   SDA, needs off board 12k pullup
+D9 GPIO2   SCL, needs off board 12k pullup.  IO2 also drives the ESP-12 module led.
+D10	GPIO15 Jog2. WeMos has 10k to ground.  cannot use this for I2C (as we need pull ups).  boot will fail if this is held high at boot.
+Note: D3,5,6,7 are dictated by the L298 module
 
+
+IO16  no ints, high on boot, no I2C
+D8 IO0 boot fails if low.
+D9 IO2 boot fails if low
+IO15  boot fails if high.  cannot be used for I2C.  cannot be used for jog1/2
+IO4 ok
+//important:  these I2C and Jogwheel pin assignments are the best arrangement, however we need to delay feeding 3.3v to the 
+//jogwheel itself during the boot phase.  to do this, place 1k in series with 3v3 into a 47uF cap to ground.  the junction of the 
+//two feeds the "gnd" pin on the HW40 board.  You also need a diode from this junction with its cathode (-side) to the RESET line.
+//now during power-up or a reset, the RC junction will stay low long enough that the Io15 line is low during boot.
+
+The jogWheel-on-a-board is wired like this:
+Gnd links to the mid-point of the jogwheel, it also acts as one terminal of the switch
+SW is the second push switch terminal
+CK and DA are the jogwheel outputs
++ is fed via 10 resistors to each of CK and DA.
+//https://lastminuteengineers.com/rotary-encoder-arduino-tutorial/
+
+For our application here, we need to reverse the polarity on it.  i.e. "gnd" is connected to 3v3 and so SW will be active hi
+CK and DA will be pulled low via "+" which is to be connected to system ground.
+
+If you use a naked jogwheel, you need to arrange resistor pulldowns on all its outputs, and the outputs need to be active hi.
+This also allows you to utilise an external heartbeat LED.
 */
 
 #define USE_ANALOG_MEASUREMENT
 //#define ANALOG_SCALING 1.95  //1.65v is 512 conversion for 1000mA (1.18 to match multimeter RMS)
 #define ANALOG_SCALING 3.9  //when using A and B in parallel  (2.36 to match multimeter RMS)
 
+#define	PIN_SCL		2 
+#define	PIN_SDA		0 
 
-#define	PIN_HEARTBEAT 16  //and jogwheel pushbutton
+//#define	PIN_HEARTBEAT 16  //not used, instead for the WeMos board we will define PIN_JOG_PUSH
+#define ROTARY_HW40 //in this case we are using a rotary HW40 device, if not, then change to nROTARY_HW40
+#define PIN_JOG_PUSH	16   
+#define	PIN_JOG1	4  
+#define	PIN_JOG2	15 //IO15 has on board 10k pulldown, IO15 must be low for boot
 
 #define DCC_PINS \
-uint32 dcc_info[4] = { PERIPHS_IO_MUX_MTDI_U,  FUNC_GPIO12, 12 , 0 }; \
-uint32 enable_info[4] = { PERIPHS_IO_MUX_MTDI_U,  FUNC_GPIO5, 5 , 0 }; \
-uint32 dcc_infoA[4] = { PERIPHS_IO_MUX_MTDI_U,  FUNC_GPIO14, 14 , 0 }; \
-uint32 enable_infoA[4] = { PERIPHS_IO_MUX_MTDI_U,  FUNC_GPIO13,13 , 0 };
+dcc_init(12,5,true,false);\
+dcc_init(14,13,true,false);
 
-#define	PIN_SCL		2 //12k pullup
-#define	PIN_SDA		0  //12k pullup
-#define	PIN_JOG1	4  
-#define	PIN_JOG2	15 //12k pulldown
 
 #define KEYPAD_ADDRESS 0x21   //pcf8574
 //addr, en,rw,rs,d4,d5,d6,d7,backlight, polarity.   we are using this as a 4 bit device

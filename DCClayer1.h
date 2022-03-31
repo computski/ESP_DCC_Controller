@@ -1,5 +1,6 @@
 // DCClayer1.h
 // 2021-10-14 modified to support DC pwm operation, i.e. non DCC. In this mode it responds only to loco 3
+// 2021-12-17 simplified dcc_init() and dc_init()
 // DC mode is selected in the .INO setup routine
 
 
@@ -7,7 +8,7 @@
 #define _DCCLAYER1_h
 
 #if defined(ARDUINO) && ARDUINO >= 100
-#include "arduino.h"
+#include "Arduino.h"
 #else
 #include "WProgram.h"
 #endif
@@ -30,7 +31,8 @@
 
 	extern volatile DCCBUFFER DCCpacket;
 
-	void ICACHE_FLASH_ATTR dcc_init(uint32_t pin_info[4], uint32_t pin_enable_info[4]);
-	void ICACHE_FLASH_ATTR dc_init(uint32_t pin_info_pwm[4], uint32_t pin_info_dir[4]);
+	void ICACHE_FLASH_ATTR dcc_init(uint32_t pin_pwm, uint32_t pin_enable, bool phase, bool invert);
+
+	void ICACHE_FLASH_ATTR dc_init(uint32_t pin_pwm, uint32_t pin_dir, bool phase, bool invert);
 
 #endif

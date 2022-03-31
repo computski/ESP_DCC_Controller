@@ -236,10 +236,8 @@ Note: using non PWM compat mode, the timebase is 200nS.
 	}
 
 
-	/*Initialisation. call repeatedly to activate additional DCC outputs
-	pin_info[] holds the DCC signal pin, pin_enable_info[] holds the output enable pin
-	*/
-	void ICACHE_FLASH_ATTR dcc_init(uint32_t dcc_info[4], uint32_t enable_info[4])
+	//Initialisation. call repeatedly to activate additional DCC outputs
+	void ICACHE_FLASH_ATTR dcc_init (uint32_t pin_pwm,uint32_t pin_enable,bool phase, bool invert)
 	{
 		//load with an IDLE packet
 		DCCpacket.data[0] = 0xFF;
@@ -247,37 +245,23 @@ Note: using non PWM compat mode, the timebase is 200nS.
 		DCCpacket.data[2] = 0xFF;
 		DCCpacket.packetLen = 3;
 
+		pinMode(pin_pwm, OUTPUT);
+		pinMode(pin_enable, OUTPUT);
 
-		// PIN info[4]: MUX-Register, Mux-Setting, PIN-Nr, invert
-		PIN_FUNC_SELECT(dcc_info[0], dcc_info[1]);
-		//PIN_PULLUP_EN(dcc_info[0]); 
-		if (dcc_info[3] == 0) {
-			dcc_mask |= (1 << dcc_info[2]);
+		if (phase) {
+			dcc_mask |= (1 << pin_pwm);
 		}
 		else {
-			dcc_maskInverse |= (1 << dcc_info[2]);
+			dcc_maskInverse |= (1 << pin_pwm);
 		}
-		/*clear target bit with OUT_W1TC.  enable as an output with ENABLE_WITS*/
-		GPIO_REG_WRITE(GPIO_OUT_W1TC_ADDRESS, (1 << dcc_info[2]));  //clear target bit
-		GPIO_REG_WRITE(GPIO_ENABLE_W1TS_ADDRESS, (1 << dcc_info[2]));  //set pin as an output
-		/*select totem-pole output, default is open drain which is selected with |4*/
-		GPIO_REG_WRITE(GPIO_PIN_ADDR(dcc_info[2]), GPIO_REG_READ(GPIO_PIN_ADDR(dcc_info[2])) & ~4);
-
+		
 		/*set up enable pin(s)*/
-		
-		
-		PIN_FUNC_SELECT(enable_info[0], enable_info[1]);
-		if (enable_info[3] == 0) {
-			enable_mask |= (1 << enable_info[2]);
+		if (invert) {
+			enable_maskInverse |= (1 << pin_enable);
 		}
 		else {
-			enable_maskInverse |= (1 << enable_info[2]);
+			enable_mask |= (1 << pin_enable);
 		}
-		//clear target bit with OUT_W1TC.  enable as an output with ENABLE_WITS
-		GPIO_REG_WRITE(GPIO_OUT_W1TC_ADDRESS, (1 << enable_info[2]));  //clear target bit
-		GPIO_REG_WRITE(GPIO_ENABLE_W1TS_ADDRESS, (1 << enable_info[2]));  //set pin as an output
-		///elect totem-pole output, default is open drain which is selected with |4
-		GPIO_REG_WRITE(GPIO_PIN_ADDR(enable_info[2]), GPIO_REG_READ(GPIO_PIN_ADDR(enable_info[2])) & ~4);
 		
 
 #if PWM_USE_NMI
@@ -467,44 +451,33 @@ Note: using non PWM compat mode, the timebase is 200nS.
 
 	}
 
+
+
 	//call with a pwm pin and direction pin
-	void ICACHE_FLASH_ATTR dc_init(uint32_t pin_info_pwm[4], uint32_t pin_info_dir[4]) {
+	void ICACHE_FLASH_ATTR dc_init(uint32_t pin_pwm, uint32_t pin_dir, bool phase, bool invert){
 		//load with an IDLE packet
 		DCCpacket.data[0] = 0xFF;
 		DCCpacket.data[1] = 0;
 		DCCpacket.data[2] = 0xFF;
 		DCCpacket.packetLen = 3;
-			
 
-		// PIN info[4]: MUX-Register, Mux-Setting, PIN-Nr, invert
-		PIN_FUNC_SELECT(pin_info_pwm[0], pin_info_pwm[1]);
-		if (pin_info_pwm[3] == 0) {
-			pwm_mask |= (1 << pin_info_pwm[2]);
+		pinMode(pin_pwm, OUTPUT);
+		pinMode(pin_dir, OUTPUT);
+		
+		if (phase) {
+			pwm_mask |= (1 << pin_pwm);
 		}
 		else {
-			pwm_maskInverse |= (1 << pin_info_pwm[2]);
+			pwm_maskInverse |= (1 << pin_pwm);
 		}
-		/*clear target bit with OUT_W1TC.  enable as an output with ENABLE_WITS*/
-		GPIO_REG_WRITE(GPIO_OUT_W1TC_ADDRESS, (1 << pin_info_pwm[2]));  //clear target bit
-		GPIO_REG_WRITE(GPIO_ENABLE_W1TS_ADDRESS, (1 << pin_info_pwm[2]));  //set pin as an output
-		/*select totem-pole output, default is open drain which is selected with |4*/
-		GPIO_REG_WRITE(GPIO_PIN_ADDR(pin_info_pwm[2]), GPIO_REG_READ(GPIO_PIN_ADDR(pin_info_pwm[2])) & ~4);
 
-		/*add pin control for direction*/
-		PIN_FUNC_SELECT(pin_info_dir[0], pin_info_dir[1]);
-		if (pin_info_dir[3] == 0) {
-			dir_mask |= (1 << pin_info_dir[2]);
+		if (invert) {
+			dir_maskInverse |= (1 << pin_dir);
 		}
 		else {
-			dir_maskInverse |= (1 << pin_info_dir[2]);
+			dir_mask |= (1 << pin_dir);
 	}
-		/*clear target bit with OUT_W1TC.  enable as an output with ENABLE_WITS*/
-		GPIO_REG_WRITE(GPIO_OUT_W1TC_ADDRESS, (1 << pin_info_dir[2]));  //clear target bit
-		GPIO_REG_WRITE(GPIO_ENABLE_W1TS_ADDRESS, (1 << pin_info_dir[2]));  //set pin as an output
-		/*select totem-pole output, default is open drain which is selected with |4*/
-		GPIO_REG_WRITE(GPIO_PIN_ADDR(pin_info_dir[2]), GPIO_REG_READ(GPIO_PIN_ADDR(pin_info_dir[2])) & ~4);
-
-
+		
 
 #if PWM_USE_NMI
 		ETS_FRC_TIMER1_NMI_INTR_ATTACH(pwm_intr_handler);

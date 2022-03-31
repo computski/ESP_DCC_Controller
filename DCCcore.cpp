@@ -17,7 +17,7 @@ BOOTUP_LCD creates an instance of the LiquidCrystal_I2C class and defines its pa
 its defined in Global.h hardware section
 */
 
-//current and voltage monitoring device
+//current and voltage monitoring device from arduino library
 #include <Adafruit_INA219.h>
 
 
@@ -1854,8 +1854,10 @@ void dccPutSettings() {
 
 
 void DCCcoreBoot() {
-	//LED and local estop button
-	pinMode(PIN_HEARTBEAT, OUTPUT); 
+			
+	//2022-01-08 pinMode for PIN_HEARTBEAT, and PIN_JOG_xx now handled in Jogwheel cpp
+
+	
 #ifdef PIN_ESTOP
 		pinMode(PIN_ESTOP, INPUT_PULLUP); //pull low to signal Emergency Stop
 #endif	
@@ -2615,7 +2617,8 @@ int8_t DCCcore(void) {
 				if (m_pom.timeout == 0) { updatePOMdisplay(); }
 			}
 
-			//handle LED display state
+			//handle LED display state. We don't write directly to the PIN_HEARTBEAT pin, instead it is handled through
+			//the jogWheel routines
 			++m_ledCount;
 			if (m_ledCount >= 8) { m_ledCount = 0; }
 			if ((m_stateLED & (1 << m_ledCount)) == 0) { 

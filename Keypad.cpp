@@ -26,7 +26,7 @@
 
 
 
-#include <arduino.h>
+#include <Arduino.h>
 
 //key holds the current valid key. key flag is raised on every press or repeat press if held
 

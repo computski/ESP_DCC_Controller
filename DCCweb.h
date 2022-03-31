@@ -4,7 +4,7 @@
 #define _DCCWEB_h
 
 #if defined(ARDUINO) && ARDUINO >= 100
-	#include "arduino.h"
+	#include "Arduino.h"
 #else
 	#include "WProgram.h"
 #endif
@@ -15,7 +15,7 @@
 #include <FS.h>   //SPIFFS library
 #include <WebSockets.h>  //from arduino library manager. Markus Sattler v2.1
 #include <WebSocketsServer.h>
-
+#include <ESP8266WiFi.h>
 
 
 

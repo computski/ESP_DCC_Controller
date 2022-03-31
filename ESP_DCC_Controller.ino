@@ -4,9 +4,9 @@
 
 /*
 	Name:       ESP_DCC_Controller.ino
-	updated:	2021-10-07
+	updated:	2021-12-14
 	Author:     Julian Ossowski
-	Target:		NodeMCU 1.0 (ESP-12E Module)
+	Target:		NodeMCU 1.0 (ESP-12E Module) or WeMOS D1 (R1 only)
 	Note:		This device is 4M flash with 1M spiffs. The spiffs hold the webserver files
 				and must be uploaded separately via vMicro publish server feature
 	Serial:		default speed on the serial is 115200
@@ -19,16 +19,25 @@
 	It then feeds via a diode into the 3v3 regulator.  Its possible to feed Vin with 12v for example and the regulator will drop
 	this to 3v3, however the regulator will run hot.  Also the USB socket will have 12v present on it, which is a risk for any
 	device plugged into it.
+
+ Important: Tested and works with these library versions
+ ESP boards, 2.7.1 works version 3.0.0 does not
+ Adafruit INA219 library 1.0.3 works
+ ArduinoJSON library 5.13.5  will not work with 6.x.x onwards
+
+ These libraries need to be downloaded and put in the arduino libraries folder
+ ArduinoJson-5.13.5  https://www.arduinolibraries.info/libraries/arduino-json
+ ESPAsyncTCP  https://github.com/me-no-dev/ESPAsyncTCP
+ NewLiquidCrystal https://github.com/marcmerlin/NewLiquidCrystal
+
+ These can be loaded through the arduino library manager
+ WebSockets 
+ Adafruit INA219
 */
 
 
 
-#include <ESP8266WebServer.h>
 #include "Global.h"
-#include <EEPROM.h>
-#include <Adafruit_INA219.h>  //from arduino library manager
-#include <ESP8266WiFi.h>
-
 #include "DCCcore.h"
 #include "DCClayer1.h"
 #include "DCCweb.h"
@@ -57,14 +66,10 @@ void setup() {
 		//If DC_PINS is defined, this overrides DCC and we will create a DC system.  Entirel optional. If you want 
 		//a DCC system, then comment out or delete the DC_PINS definition in Global.h for the board you are using
 		DC_PINS
-		dc_init(pwm_info, dir_info);
-		dc_init(pwm_infoA, dir_infoA);
 		
 		#elif defined DCC_PINS
 		//we expect to find DCC_PINS defined
 		DCC_PINS
-		dcc_init(dcc_info, enable_info);
-		dcc_init(dcc_infoA, enable_infoA);
 		#else
 		//need to define at least DCC_PINS, else we throw a compile time error.
 		#error "DCC_PINS or DC_PINS must be defined.  Neither is."
@@ -76,51 +81,14 @@ void setup() {
 	dccGetSettings();
 
 
-	pinMode(PIN_HEARTBEAT, INPUT_PULLUP); //D0 with led
-
-	Serial.printf("Setting soft-AP %s pwd=%s\n\r", bootController.SSID, bootController.pwd);
-
-	WiFi.persistent(false);
-	WiFi.setAutoConnect(false);
-	WiFi.setAutoReconnect(false);
-	WiFi.mode(WIFI_AP);
 
 
-	//Passwords need to be >8 char and start with an alpha char
-	//failure to do so results in an open network
-	WiFi.softAP(bootController.SSID, bootController.pwd);
-	
-	//wait for the softAP to start, then set the ip address
-	delayMicroseconds(500);
-
-	//IPAddress class requires the address to be provided as 4 octets
-	uint8_t myIP[4];
-	char *p = nullptr;
-	char ipBoot[17];
-	strcpy(ipBoot, bootController.IP);
-	
-	//strtok modifies its arguement, have to use a copy.
-	p = strtok((char *)ipBoot, ",.");
-	int i = 0;
-	while (p != NULL) {
-		myIP[i] = atoi(p);
-		i++;
-		if (i == 4) break;
-		//more data?
-		p = strtok(NULL, ",.");
-	}
-	
-	IPAddress Ip(myIP[0], myIP[1], myIP[2], myIP[3]);
-	IPAddress NMask(255, 255, 255, 0);
-	WiFi.softAPConfig(Ip, Ip, NMask);
-	//declare the IP of the AP
-	Serial.println(WiFi.softAPIP());
-	Serial.printf("mode %d\r\n", WiFi.getMode());
+	nsJogWheel::jogInit();
 
 #ifdef _DCCWEB_h		
 	nsDCCweb::startWebServices();
 #endif
-	nsJogWheel::jogInit();
+	
 
 	/*2020-04-02 start WiThrottle protocol*/
 #ifdef _WITHROTTLE_h
@@ -197,9 +165,3 @@ void loop() {
 	}//qtr sec
 
 }
-
-
-
-
-
-

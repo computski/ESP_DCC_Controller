@@ -134,7 +134,49 @@ void getRoster() {
 
 
 
-void nsDCCweb::startWebServices() { // Start a WebSocket server
+void nsDCCweb::startWebServices() { 
+	//start WiFi
+	
+	Serial.printf("Setting soft-AP %s pwd=%s\n\r", bootController.SSID, bootController.pwd);
+
+	WiFi.persistent(false);
+	WiFi.setAutoConnect(false);
+	WiFi.setAutoReconnect(false);
+	WiFi.mode(WIFI_AP);
+	
+	//Passwords need to be >8 char and start with an alpha char
+	//failure to do so results in an open network
+	WiFi.softAP(bootController.SSID, bootController.pwd);
+
+	//wait for the softAP to start, then set the ip address
+	delayMicroseconds(500);
+
+	//IPAddress class requires the address to be provided as 4 octets
+	uint8_t myIP[4];
+	char *p = nullptr;
+	char ipBoot[17];
+	strcpy(ipBoot, bootController.IP);
+
+	//strtok modifies its arguement, have to use a copy.
+	p = strtok((char *)ipBoot, ",.");
+	int i = 0;
+	while (p != NULL) {
+		myIP[i] = atoi(p);
+		i++;
+		if (i == 4) break;
+		//more data?
+		p = strtok(NULL, ",.");
+	}
+
+	IPAddress Ip(myIP[0], myIP[1], myIP[2], myIP[3]);
+	IPAddress NMask(255, 255, 255, 0);
+	WiFi.softAPConfig(Ip, Ip, NMask);
+	//declare the IP of the AP
+	Serial.println(WiFi.softAPIP());
+	Serial.printf("mode %d\r\n", WiFi.getMode());
+	
+
+	// Start a Web server
 	web.on("/", handleRoot);
 	web.onNotFound([]() {                              // If the client requests any URI
 		if (!handleFileRead(web.uri()))                  // send it if it exists
@@ -145,13 +187,14 @@ void nsDCCweb::startWebServices() { // Start a WebSocket server
 	//https://forum.arduino.cc/index.php?topic=476291.0
 	web.on("/hardware", HTTP_GET, []() {getHardware();});
 	web.on("/roster", HTTP_GET, []() {getRoster();});
-	
 	web.begin();    // start the HTTP server
 	Serial.println(F("HTTP server started."));
 
 	SPIFFS.begin();                           // Start the SPI Flash Files System
+
+	// start the websocket server
 	webSocket = new WebSocketsServer(bootController.wsPort);
-	webSocket->begin();                         // start the websocket server
+	webSocket->begin();                        
 	webSocket->onEvent(webSocketEvent);          // if there's an incomming websocket message, go to function 'webSocketEvent'
 
 	Serial.printf("WebSocket start port %d\n", bootController.wsPort);
