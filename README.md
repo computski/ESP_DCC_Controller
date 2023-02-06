@@ -1,6 +1,8 @@
 # ESP_DCC_Controller
 DCC controller based on nodeMCU ESP12-E module for model railroad control.  This is an ESP8266 device (ESP12), not an ESP32.
 
+Note: see https://www.instructables.com/member/Computski/instructables/ for a detailed description of the project and build instructions.
+
 Implements a DCC controller and JRMI server which supports mobile clients running EngineDriver (android) or WiThrottle (IOS). To allow a lower cost build, it is not necessary to fit the optional 4 x 4 keypad matrix, Jogwheel and 1602 LCD display.
 
 Generates a DCC signal as a low level routine.  This is fed with DCC packets from higher level routines which handle keyboard/display
@@ -21,6 +23,7 @@ Various H-driver power boards can be used, such as the common L298 dual H module
 
 Does not support LocoNet or DCC++ at this time
 Does not support DigiTrains throttle on mobile (this is websockets based)
+I did port the code to an ESP32 but there are problems with other libraries (notably websockets) which cause unacceptable operational problems.
 
 2021-11-01 added DC support, system can run as a simple PWM DC controller and in which case it will respond only to loco 3 and 28 speed steps
 and added a definition for the DOIT ESP12 motor shield.  This is a cheap L293 shield that fits the nodeMCU. requires an external INA219 module.
