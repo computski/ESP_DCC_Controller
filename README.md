@@ -1,5 +1,8 @@
 # ESP_DCC_Controller
 
++++++++ UPDATED 2024-04-26 ++++++++++++++++++
+Now uses LittleFS and the latest version 7 ArduinoJson library
+
 DCC controller for model railroad control based on the nodeMCU ESP12-E module.  This is an ESP8266 device (ESP12), not an ESP32.
 
 Note: see https://www.instructables.com/member/Computski/instructables/ for a detailed description of the project and build instructions.
