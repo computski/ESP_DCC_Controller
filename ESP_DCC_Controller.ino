@@ -4,7 +4,7 @@
 
 /*
 	Name:       ESP_DCC_Controller.ino
-	updated:	2021-12-14
+	updated:	2024-04-26
 	Author:     Julian Ossowski
 	Target:		NodeMCU 1.0 (ESP-12E Module) or WeMOS D1 (R1 only)
 	Note:		This device is 4M flash with 1M spiffs. The spiffs hold the webserver files
@@ -21,18 +21,19 @@
 	device plugged into it.
 
  Important: Tested and works with these library versions
- ESP boards, 2.7.1 works version 3.0.0 does not
+ ESP boards, latest version 3.1.2 works
  Adafruit INA219 library 1.0.3 works
- ArduinoJSON library 5.13.5  will not work with 6.x.x onwards
+ ArduinoJSON library use version 7
+This system uses LittleFS, not SPIFFs
 
  These libraries need to be downloaded and put in the arduino libraries folder
- ArduinoJson-5.13.5  https://www.arduinolibraries.info/libraries/arduino-json
  ESPAsyncTCP  https://github.com/me-no-dev/ESPAsyncTCP
  NewLiquidCrystal https://github.com/marcmerlin/NewLiquidCrystal
 
  These can be loaded through the arduino library manager
  WebSockets 
  Adafruit INA219
+ ArduinoJSON
 */
 
 
@@ -79,9 +80,6 @@ void setup() {
 
 	//restore settings from EEPROM
 	dccGetSettings();
-
-
-
 
 	nsJogWheel::jogInit();
 

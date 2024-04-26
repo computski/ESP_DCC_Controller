@@ -1920,7 +1920,7 @@ void DCCcoreBoot() {
 
 	/*lcd.home() will reset to DRAM mode #SPLASH*/
 	lcd.home(); lcd.clear();
-	lcd.print("ESP2866 DCC\x04\x03");
+	lcd.print("ESP8266 DCC\x04\x03");
 	lcd.setCursor(0, 1);
 	/*pull the software version from eeprom*/
 	/*_bootController.softwareVersion is a long representing the date, e.g. 20210503, convert to string and split*/

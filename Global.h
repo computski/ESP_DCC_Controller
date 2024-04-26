@@ -73,9 +73,9 @@ otherwise, omit this line or change it to #define nROTARY_HW40
 */
 
 
-#define nNODEMCU_CUSTOM_PCB_3
+#define NODEMCU_CUSTOM_PCB_3
 #define nNODEMCU_DOIT_SHIELD
-#define WEMOS_D1R1_AND_L298_SHIELD
+#define nWEMOS_D1R1_AND_L298_SHIELD
 
  #if defined(NODEMCU_OPTION1)
 	/*BOARD ONE, blue LCD on 3v3 supply using mjkdz backpack address 0x20

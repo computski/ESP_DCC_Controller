@@ -10,10 +10,10 @@
 #endif
 
 #include "Global.h"
-#include <ArduinoJson.h>   //from arduino library manager.  you want VERSION 5 only!
+#include <ArduinoJson.h>   //from arduino library manager.  you want VERSION 7 only!
 #include <ESP8266WebServer.h>
-#include <FS.h>   //SPIFFS library
-#include <WebSockets.h>  //from arduino library manager. Markus Sattler v2.1
+#include <LittleFS.h>   
+#include <WebSockets.h>  //from arduino library manager. Markus Sattler 
 #include <WebSocketsServer.h>
 #include <ESP8266WiFi.h>
 
@@ -28,13 +28,15 @@ namespace nsDCCweb {
 	void broadcastChanges(void);
 
 	static void webSocketEvent(uint8_t num, WStype_t type, uint8_t * payload, size_t length);
-	static void DCCwebWS(JsonObject& root);
+	static void DCCwebWS(JsonDocument doc);
 	static void sendJson(JsonObject& out);
-	static bool changeToSlot(uint8_t slot, const char *addr, bool useLong, bool use128, const char *name);
-	static bool changeToTurnout(uint8_t slot, const char *addr, const char *name);
+	static void sendJson(JsonDocument out);
+	static bool changeToTurnout(uint8_t slot, uint16_t addr, const char* name);
+	static bool changeToTurnout(uint8_t slot, const char* addr, const char* name);
+	static bool changeToSlot(uint8_t slot, uint16_t address, bool useLong, bool use128, const char* name);
+	static bool changeToSlot(uint8_t slot, const char* addr, bool useLong, bool use128, const char* name);
 	static void setPower(bool powerOn);
-
-	static bool cBool(const char *v);
-}
+	static bool cBool(const char* v);
+	}
 
 #endif

@@ -21,7 +21,7 @@
 /*note, code at present does not support logging onto a network as a station*/
 struct CONTROLLER
 {
-	long	softwareVersion = 20211213;  //yyyymmdd captured as an integer
+	long	softwareVersion = 20240426;  //yyyymmdd captured as an integer
 	uint16_t	currentLimit = 1000;
 	uint8_t	voltageLimit = 15;
 	char SSID[21] = "DCC_ESP";
